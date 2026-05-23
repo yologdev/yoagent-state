@@ -1,0 +1,9 @@
+[book]
+title = "yoagent-state"
+authors = ["yoagent-state contributors"]
+description = "A simple but effective state and lineage layer for agents."
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/yuanhao/yoagent-state"

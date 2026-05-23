@@ -1,0 +1,16 @@
+[package]
+name = "yoagent-state"
+version = "0.1.0"
+edition = "2024"
+description = "A lightweight Rust continuity layer for long-running agents."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yuanhao/yoagent-state"
+
+[dependencies]
+async-trait = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread", "sync"] }
+uuid = { version = "1", features = ["v4", "serde"] }
