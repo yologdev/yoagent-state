@@ -6,4 +6,4 @@ language = "en"
 src = "src"
 
 [output.html]
-git-repository-url = "https://github.com/yuanhao/yoagent-state"
+git-repository-url = "https://github.com/yologdev/yoagent-state"

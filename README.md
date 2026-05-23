@@ -87,6 +87,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 The user guide is an mdBook under `docs/`.
 
+Hosted docs:
+
+```text
+https://yologdev.github.io/yoagent-state/
+```
+
+Run the docs locally:
+
 ```bash
 mdbook serve docs
 ```
@@ -102,6 +110,8 @@ If Cargo's binary directory is not on your `PATH`, run it directly:
 ```bash
 ~/.cargo/bin/mdbook serve docs
 ```
+
+GitHub Pages is deployed by `.github/workflows/docs.yml`. In the GitHub repo settings, Pages source should be set to **GitHub Actions**.
 
 ## Roadmap
 
