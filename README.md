@@ -123,9 +123,4 @@ The core idea for `yoagent-state` comes from [Yohei Nakajima](https://github.com
 
 ## License
 
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](./LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](./LICENSE-MIT))
-
-at your option.
+Licensed under the [MIT license](./LICENSE).
