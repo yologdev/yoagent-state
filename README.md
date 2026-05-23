@@ -109,7 +109,7 @@ The future plan is tracked in [ROADMAP.md](./ROADMAP.md) and mirrored in the mdB
 
 ## Acknowledgments
 
-The design is informed by ActiveState/ActiveGraph-style ideas around durable agent state and lineage. This project is independent and intentionally smaller in scope. See [ACKNOWLEDGMENTS.md](./ACKNOWLEDGMENTS.md).
+The design is informed by ActiveState/ActiveGraph-style ideas around durable agent state and lineage, especially [ActiveGraph](https://github.com/yoheinakajima/activegraph) by [Yohei Nakajima](https://github.com/yoheinakajima). This project is independent and intentionally smaller in scope. See [ACKNOWLEDGMENTS.md](./ACKNOWLEDGMENTS.md).
 
 ## License
 

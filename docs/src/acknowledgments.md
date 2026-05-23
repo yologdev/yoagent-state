@@ -1,6 +1,6 @@
 # Acknowledgments
 
-`yoagent-state` is informed by ActiveState/ActiveGraph-style ideas around durable agent state, lineage, and explainable project evolution.
+`yoagent-state` is informed by ActiveState/ActiveGraph-style ideas around durable agent state, lineage, and explainable project evolution, especially [ActiveGraph](https://github.com/yoheinakajima/activegraph) by [Yohei Nakajima](https://github.com/yoheinakajima).
 
 This project is independent. It intentionally keeps the first version smaller: append-only events, a replayed graph projection, patch lifecycle, eval lineage, decisions, and artifact references.
 
