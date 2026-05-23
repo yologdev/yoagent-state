@@ -10,6 +10,18 @@ cargo run --example goal_lineage
 
 Start here for the current core graph shape. It shows a goal being served by a task, blocked by a failure, and advanced by a patch.
 
+```mermaid
+flowchart LR
+  task["task_retry_timeout"]
+  failure["failure_retry_timeout"]
+  patch["patch_retry_state"]
+  goal["goal_retry_reliability"]
+
+  task -- serves --> goal
+  failure -- blocks --> goal
+  patch -- advances --> goal
+```
+
 ## Basic lineage
 
 ```bash
@@ -22,6 +34,14 @@ It creates:
 
 ```text
 hypothesis_retry_state_lost --explains--> failure_retry_timeout
+```
+
+```mermaid
+flowchart LR
+  hypothesis["hypothesis_retry_state_lost"]
+  failure["failure_retry_timeout"]
+
+  hypothesis -- explains --> failure
 ```
 
 You should see a markdown lineage report with the hypothesis as the root and the failure as an outgoing relation.
@@ -81,6 +101,15 @@ cargo run --example behavior_subscription
 
 This registers a behavior that reacts to `failure.observed` and creates an investigation task.
 
+```mermaid
+flowchart LR
+  failure["failure.observed"]
+  behavior["behavior subscription"]
+  task["investigation task"]
+
+  failure --> behavior --> task
+```
+
 ## Policy approval
 
 ```bash
@@ -89,6 +118,15 @@ cargo run --example policy_approval
 
 This registers a policy requiring approval before node creation. The attempted operation is blocked and an approval request node is created.
 
+```mermaid
+flowchart LR
+  action["create node"]
+  policy["policy"]
+  request["approval request"]
+
+  action --> policy --> request
+```
+
 ## Replay and fork
 
 ```bash
@@ -96,6 +134,19 @@ cargo run --example replay_and_fork
 ```
 
 This creates a graph, forks at an earlier event, and diffs the fork against current state.
+
+```mermaid
+flowchart LR
+  event["event cutoff"]
+  fork["fork graph"]
+  current["current graph"]
+  diff["graph diff"]
+
+  event --> fork
+  event --> current
+  fork --> diff
+  current --> diff
+```
 
 ## Typed pack
 

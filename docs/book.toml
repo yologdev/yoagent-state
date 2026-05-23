@@ -7,3 +7,4 @@ src = "src"
 
 [output.html]
 git-repository-url = "https://github.com/yologdev/yoagent-state"
+additional-js = ["theme/mermaid-init.js"]

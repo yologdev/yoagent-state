@@ -14,12 +14,55 @@ append-only event log
   -> replay, fork, and diff
 ```
 
+```mermaid
+flowchart LR
+  log["append-only event log"]
+  replay["deterministic replay"]
+  graph["typed graph projection"]
+  patterns["pattern subscriptions"]
+  behaviors["behaviors"]
+  policies["policy gates"]
+  forks["replay / fork / diff"]
+
+  log --> replay --> graph --> patterns --> behaviors
+  graph --> policies
+  graph --> forks
+  behaviors --> log
+  policies --> log
+```
+
 ## What changed in v0.2
 
 The core lineage path now starts from goals:
 
 ```text
 goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
+```
+
+```mermaid
+flowchart LR
+  goal["goal"]
+  task["task"]
+  run["run"]
+  observation["observation"]
+  failure["failure"]
+  hypothesis["hypothesis"]
+  patch["patch"]
+  artifact["artifact"]
+  eval["eval"]
+  decision["decision"]
+  promoted["promoted status"]
+
+  task -- serves --> goal
+  run -- produces --> observation
+  observation -- observes --> failure
+  hypothesis -- explains --> failure
+  patch -- addresses --> failure
+  patch -- advances --> goal
+  patch -- references --> artifact
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
+  decision -- allows --> promoted
 ```
 
 This is the common graph spine. It is not a claim that every agent run must create every node. `artifact` includes diffs, logs, screenshots, files, eval output, and other external evidence. `promotion` is represented by the patch lifecycle status.
@@ -81,6 +124,17 @@ They do not mutate the graph directly.
 event -> matching behavior -> new events/state ops -> replayable state
 ```
 
+```mermaid
+flowchart LR
+  event["failure.observed"]
+  behavior["matching behavior"]
+  task["create investigation task"]
+  ops["state.ops_applied event"]
+  graph["replayed graph"]
+
+  event --> behavior --> task --> ops --> graph
+```
+
 This keeps behavior execution auditable.
 
 ## Policies
@@ -89,6 +143,20 @@ Policies can allow, deny, or require approval for sensitive actions.
 
 The current policy foundation supports approval requests for runtime operations. More policy surfaces can be added without changing the event-sourced model.
 
+```mermaid
+flowchart TB
+  action["runtime action"]
+  policy["policy check"]
+  allow["allow"]
+  deny["deny"]
+  approval["approval request node"]
+
+  action --> policy
+  policy --> allow
+  policy --> deny
+  policy --> approval
+```
+
 ## Replay, fork, diff
 
 Replay rebuilds graph state from events.
@@ -96,3 +164,17 @@ Replay rebuilds graph state from events.
 Fork creates an alternate event history from a parent event cutoff.
 
 Diff compares projected graphs so agents can inspect what changed between histories.
+
+```mermaid
+flowchart LR
+  events["events"]
+  cutoff["event cutoff"]
+  fork["fork graph"]
+  current["current graph"]
+  diff["graph diff"]
+
+  events --> cutoff --> fork
+  events --> current
+  fork --> diff
+  current --> diff
+```

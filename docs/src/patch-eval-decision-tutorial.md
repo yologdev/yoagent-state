@@ -6,6 +6,22 @@ This tutorial walks through the main `yoagent-state` flow:
 failure -> patch -> diff artifact -> eval -> decision -> promotion
 ```
 
+```mermaid
+flowchart LR
+  failure["failure_17<br/>kind: failure"]
+  patch["patch_42<br/>kind: patch"]
+  artifact["patch_42.diff<br/>kind: git.diff artifact"]
+  eval["eval_55<br/>cargo test passed"]
+  decision["decision_9<br/>approved"]
+  promoted["PatchStatus::Promoted"]
+
+  patch -- addresses --> failure
+  patch -- references --> artifact
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
+  decision -- allows --> promoted
+```
+
 This is the patch lifecycle lane inside the larger goal-centered graph:
 
 ```text

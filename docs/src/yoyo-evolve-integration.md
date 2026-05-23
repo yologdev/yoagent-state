@@ -26,6 +26,31 @@ promote if approved
 record lineage
 ```
 
+```mermaid
+flowchart LR
+  goal["goal"]
+  task["task"]
+  snapshot["project snapshot"]
+  failure["failure"]
+  hypothesis["hypothesis"]
+  patch["patch"]
+  artifact["diff artifact"]
+  eval["eval result"]
+  decision["decision"]
+  promoted["promoted patch"]
+
+  task -- serves --> goal
+  snapshot -- references --> task
+  failure -- blocks --> goal
+  hypothesis -- explains --> failure
+  patch -- addresses --> failure
+  patch -- advances --> goal
+  patch -- references --> artifact
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
+  decision --> promoted
+```
+
 ## What yoagent-state tracks
 
 For a project yoyo is improving, the state layer should track:
@@ -68,6 +93,22 @@ modifies -> file:crates/yoagent-runtime/src/tool.rs
 modifies -> file:crates/yoagent-runtime/tests/retry.rs
 validated_by -> eval_retry_timeout
 approved_by -> decision_promote_retry_timeout
+```
+
+```mermaid
+flowchart LR
+  patch["patch_retry_timeout"]
+  failure["failure_retry_timeout"]
+  source["file:crates/yoagent-runtime/src/tool.rs"]
+  test["file:crates/yoagent-runtime/tests/retry.rs"]
+  eval["eval_retry_timeout"]
+  decision["decision_promote_retry_timeout"]
+
+  patch -- addresses --> failure
+  patch -- modifies --> source
+  patch -- modifies --> test
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
 ```
 
 ## Implementation rule

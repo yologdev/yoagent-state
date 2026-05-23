@@ -8,6 +8,21 @@ The lifecycle is:
 proposed -> applied_in_fork -> evaluated -> approved/rejected -> promoted
 ```
 
+```mermaid
+stateDiagram-v2
+  [*] --> Proposed
+  Proposed --> AppliedInFork
+  AppliedInFork --> Evaluated
+  Evaluated --> Approved
+  Evaluated --> Rejected
+  Approved --> Promoted
+  Proposed --> Stale
+  AppliedInFork --> Conflicted
+  Evaluated --> Stale
+  Rejected --> [*]
+  Promoted --> [*]
+```
+
 Additional states:
 
 - `stale`
@@ -23,3 +38,19 @@ The patch should answer:
 - which commit or promotion contains it
 
 Promotion should require evidence such as a passing eval, a passing test, or explicit human approval.
+
+```mermaid
+flowchart LR
+  patch["patch"]
+  failure["failure"]
+  artifact["diff / log / file artifact"]
+  eval["passing eval or test"]
+  decision["approval decision"]
+  promoted["promoted status"]
+
+  patch -- addresses --> failure
+  patch -- references --> artifact
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
+  decision --> promoted
+```

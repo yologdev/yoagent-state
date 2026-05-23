@@ -34,6 +34,14 @@ Then it creates a relation:
 hypothesis_retry_state_lost --explains--> failure_retry_timeout
 ```
 
+```mermaid
+flowchart LR
+  hypothesis["hypothesis_retry_state_lost<br/>kind: hypothesis"]
+  failure["failure_retry_timeout<br/>kind: failure"]
+
+  hypothesis -- explains --> failure
+```
+
 That edge is the start of lineage. Instead of storing a loose note in a transcript, the state layer records a queryable relationship.
 
 ## Why it matters
@@ -44,6 +52,31 @@ The chain grows naturally:
 
 ```text
 goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
+```
+
+```mermaid
+flowchart LR
+  goal["goal"]
+  task["task"]
+  run["run"]
+  observation["observation"]
+  failure["failure"]
+  hypothesis["hypothesis"]
+  patch["patch"]
+  artifact["artifact"]
+  eval["eval"]
+  decision["decision"]
+  promoted["promoted status"]
+
+  task -- serves --> goal
+  run -- produces --> observation
+  observation -- observes --> failure
+  hypothesis -- explains --> failure
+  patch -- addresses --> failure
+  patch -- references --> artifact
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
+  decision -- allows --> promoted
 ```
 
 For this tiny example, only the `hypothesis -> failure` edge is created. The larger runtime can later connect that edge back to a goal and forward to a patch, artifacts, evals, and decisions.

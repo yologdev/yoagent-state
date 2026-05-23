@@ -37,6 +37,17 @@ Loading state scans the event log and replays it into the graph:
 events.jsonl -> replay -> graph projection
 ```
 
+```mermaid
+flowchart LR
+  jsonl["events.jsonl<br/>append-only"]
+  scan["scan"]
+  replay["replay"]
+  graph["in-memory graph projection"]
+  query["lineage / graph queries"]
+
+  jsonl --> scan --> replay --> graph --> query
+```
+
 The event log is durable. The graph is derived.
 
 ## Why JSONL first

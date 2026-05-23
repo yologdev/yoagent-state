@@ -27,6 +27,32 @@ The current core graph shape is:
 goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
 ```
 
+```mermaid
+flowchart LR
+  goal["goal"]
+  task["task"]
+  run["run"]
+  observation["observation"]
+  failure["failure"]
+  hypothesis["hypothesis"]
+  patch["patch"]
+  artifact["artifact"]
+  eval["eval"]
+  decision["decision"]
+  promoted["promoted status"]
+
+  task -- serves --> goal
+  run -- produces --> observation
+  observation -- observes --> failure
+  hypothesis -- explains --> failure
+  patch -- addresses --> failure
+  patch -- advances --> goal
+  patch -- references --> artifact
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
+  decision --> promoted
+```
+
 This is a causal spine. It does not require every flow to create every node.
 
 ## Phase 1: Runtime Hardening

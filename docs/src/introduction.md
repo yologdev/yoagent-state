@@ -16,6 +16,32 @@ The full continuity chain starts from a goal:
 goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
 ```
 
+```mermaid
+flowchart LR
+  goal["goal"]
+  task["task"]
+  run["run"]
+  observation["observation"]
+  failure["failure"]
+  hypothesis["hypothesis"]
+  patch["patch"]
+  artifact["artifact"]
+  eval["eval"]
+  decision["decision"]
+  promoted["promoted status"]
+
+  task -- serves --> goal
+  run -- produces --> observation
+  observation -- observes --> failure
+  hypothesis -- explains --> failure
+  patch -- addresses --> failure
+  patch -- advances --> goal
+  patch -- references --> artifact
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
+  decision -- allows --> promoted
+```
+
 That chain is the product. It tells you what the agent was trying to achieve, what work it started, what happened during the run, what failed, what the agent believed, what it proposed, what project artifact it referenced, what tested it, and what decision approved or rejected it.
 
 It is a causal spine, not a required single linked list. Some runs start at a failure, some start at a goal, and some only record tool or model calls. The important part is that the graph can connect intent, execution, evidence, change, and decision.

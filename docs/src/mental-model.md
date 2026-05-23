@@ -6,6 +6,16 @@
 append events -> replay graph -> query lineage
 ```
 
+```mermaid
+flowchart LR
+  events["append-only events"]
+  replay["deterministic replay"]
+  graph["semantic graph projection"]
+  lineage["lineage queries"]
+
+  events --> replay --> graph --> lineage
+```
+
 The full runtime adds typed packs, behaviors, policies, replay, forks, frames, and views on top of that event-sourced base.
 
 The graph is not the source of truth. It is a projection derived from append-only events.
@@ -16,6 +26,34 @@ The current runtime is goal-centered. The common causal spine is:
 
 ```text
 goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
+```
+
+```mermaid
+flowchart LR
+  goal["goal"]
+  task["task"]
+  run["run"]
+  observation["observation"]
+  failure["failure"]
+  hypothesis["hypothesis"]
+  patch["patch"]
+  artifact["artifact"]
+  eval["eval"]
+  decision["decision"]
+  promoted["promoted status"]
+
+  task -- serves --> goal
+  run -- produced_by --> task
+  run -- produces --> observation
+  observation -- observes --> failure
+  failure -- blocks --> goal
+  hypothesis -- explains --> failure
+  patch -- addresses --> failure
+  patch -- advances --> goal
+  patch -- references --> artifact
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
+  decision -- allows --> promoted
 ```
 
 Read that as a graph shape, not a required pipeline:
@@ -126,6 +164,19 @@ Patch lifecycle:
 proposed -> applied_in_fork -> evaluated -> approved/rejected -> promoted
 ```
 
+```mermaid
+stateDiagram-v2
+  [*] --> Proposed
+  Proposed --> AppliedInFork
+  AppliedInFork --> Evaluated
+  Evaluated --> Approved
+  Evaluated --> Rejected
+  Approved --> Promoted
+  Proposed --> Stale
+  AppliedInFork --> Conflicted
+  Evaluated --> Stale
+```
+
 This lifecycle is one lane inside the larger goal-centered graph. A patch usually advances a goal, addresses a failure, references artifacts, is validated by evals, and is approved or rejected by decisions.
 
 ## Artifacts
@@ -146,6 +197,16 @@ Store paths, URIs, summaries, and hashes where practical.
 
 On startup, the store scans events and replays them into the graph projection.
 
+```mermaid
+flowchart LR
+  store["EventStore"]
+  scan["scan events"]
+  projector["Projector"]
+  graph["Graph"]
+
+  store --> scan --> projector --> graph
+```
+
 This makes state durable without requiring a graph database.
 
 ## Behaviors, policies, and packs
@@ -155,5 +216,21 @@ Typed packs validate object and relation shapes.
 Behaviors react to event patterns and return state ops.
 
 Policies gate sensitive actions by allowing, denying, or requiring approval.
+
+```mermaid
+flowchart TB
+  event["event"]
+  pack["typed pack validation"]
+  policy["policy gate"]
+  behavior["behavior subscription"]
+  ops["state ops"]
+  graph["graph projection"]
+
+  event --> pack --> policy
+  policy -- allow --> ops
+  policy -- require approval --> graph
+  event --> behavior --> ops
+  ops --> graph
+```
 
 These are runtime features, but they still preserve the same rule: durable state comes from append-only events.

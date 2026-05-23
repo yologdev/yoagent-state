@@ -9,6 +9,17 @@ yoagent = execution
 yoagent-state = state, lineage, patches, evals, decisions
 ```
 
+```mermaid
+flowchart LR
+  yoagent["yoagent<br/>execution loop"]
+  sink["YoAgentStateSink"]
+  adapter["YoAgentStateAdapter"]
+  events["append-only events"]
+  graph["semantic graph"]
+
+  yoagent --> sink --> adapter --> events --> graph
+```
+
 ## Adapter shape
 
 The crate provides `YoAgentStateSink` and `YoAgentStateAdapter`.
@@ -38,6 +49,20 @@ model.finished
 tool.called
 tool.finished
 run.finished
+```
+
+```mermaid
+sequenceDiagram
+  participant Run
+  participant Model
+  participant Tool
+  participant State
+  Run->>State: run.started
+  Model->>State: model.called
+  Model->>State: model.finished
+  Tool->>State: tool.called
+  Tool->>State: tool.finished
+  Run->>State: run.finished
 ```
 
 Those events stay historical unless converted into state ops. This keeps the graph projection focused on durable semantic state.

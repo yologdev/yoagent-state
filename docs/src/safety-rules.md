@@ -19,6 +19,19 @@ A patch should not be promoted without at least one of:
 
 The evidence should be represented in lineage, not hidden in a transcript.
 
+```mermaid
+flowchart LR
+  patch["patch"]
+  evidence["eval / test / approval"]
+  decision["decision"]
+  promoted["promoted status"]
+
+  patch -- validated_by --> evidence
+  patch -- approved_by --> decision
+  evidence --> promoted
+  decision --> promoted
+```
+
 ## Project base must be checked
 
 If a patch was created against commit `abc123`, do not blindly apply it to another commit.

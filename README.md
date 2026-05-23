@@ -24,6 +24,32 @@ goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact
 
 That line is the common causal spine, not a required linear workflow. A diff is an artifact. Promotion is a patch status transition backed by evals and decisions.
 
+```mermaid
+flowchart LR
+  goal["goal"]
+  task["task"]
+  run["run"]
+  observation["observation"]
+  failure["failure"]
+  hypothesis["hypothesis"]
+  patch["patch"]
+  artifact["artifact"]
+  eval["eval"]
+  decision["decision"]
+  promoted["promoted status"]
+
+  task -- serves --> goal
+  run -- produces --> observation
+  observation -- observes --> failure
+  hypothesis -- explains --> failure
+  patch -- addresses --> failure
+  patch -- advances --> goal
+  patch -- references --> artifact
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
+  decision -- allows --> promoted
+```
+
 ```text
 yoagent executes.
 yoagent-state remembers.
@@ -54,6 +80,18 @@ You should see a lineage report like this:
 ```
 
 This means the goal is being served by a task, blocked by a failure, and advanced by a patch.
+
+```mermaid
+flowchart LR
+  task["task_retry_timeout<br/>kind: task"]
+  failure["failure_retry_timeout<br/>kind: failure"]
+  patch["patch_retry_state<br/>kind: patch"]
+  goal["goal_retry_reliability<br/>kind: goal<br/>status: InProgress"]
+
+  task -- serves --> goal
+  failure -- blocks --> goal
+  patch -- advances --> goal
+```
 
 To see the patch/eval/decision lane:
 

@@ -53,6 +53,20 @@ eval_55 validated patch_42
 decision_9 approved patch_42
 ```
 
+```mermaid
+flowchart LR
+  failure["failure_17"]
+  patch["patch_42"]
+  artifact["patch_42.diff"]
+  eval["eval_55"]
+  decision["decision_9"]
+
+  patch -- addresses --> failure
+  patch -- references --> artifact
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
+```
+
 The second form is what agents and maintainers need to explain project evolution.
 
 ## Durable state vs project diff

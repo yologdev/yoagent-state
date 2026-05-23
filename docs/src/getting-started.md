@@ -37,6 +37,18 @@ You should see a lineage report like this:
 
 Read it as: `goal_retry_reliability` is being served by a task, blocked by a failure, and advanced by a patch.
 
+```mermaid
+flowchart LR
+  task["task_retry_timeout<br/>kind: task"]
+  failure["failure_retry_timeout<br/>kind: failure"]
+  patch["patch_retry_state<br/>kind: patch"]
+  goal["goal_retry_reliability<br/>kind: goal<br/>status: InProgress"]
+
+  task -- serves --> goal
+  failure -- blocks --> goal
+  patch -- advances --> goal
+```
+
 That is the core promise: state is not just a log. It is a graph that connects intent, work, evidence, change, and decision.
 
 To inspect the patch/eval/decision lane directly:

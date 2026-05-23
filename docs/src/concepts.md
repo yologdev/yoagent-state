@@ -18,11 +18,33 @@ Common event kinds:
 
 Only `state.ops_applied` mutates the graph projection directly.
 
+```mermaid
+flowchart LR
+  event["event"]
+  ops["state.ops_applied"]
+  graph["graph projection"]
+  history["historical event only"]
+
+  event --> history
+  ops --> graph
+```
+
 ## Graph
 
 The graph is a lossy semantic projection derived from events. It contains nodes, typed relations, artifacts, and a monotonically increasing version.
 
 Keep the graph focused on agent continuity. Do not mirror every AST node, every log line, or every file.
+
+```mermaid
+flowchart LR
+  nodeA["node"]
+  relation["typed relation"]
+  nodeB["node"]
+  artifact["artifact reference"]
+
+  nodeA -- relation --> nodeB
+  nodeA -- references --> artifact
+```
 
 ## Node
 

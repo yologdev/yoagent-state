@@ -8,6 +8,27 @@ The current API is organized around this goal-centered graph shape:
 goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
 ```
 
+```mermaid
+flowchart LR
+  goal["goal"]
+  task["task"]
+  failure["failure"]
+  hypothesis["hypothesis"]
+  patch["patch"]
+  artifact["artifact"]
+  eval["eval"]
+  decision["decision"]
+
+  task -- serves --> goal
+  failure -- blocks --> goal
+  hypothesis -- explains --> failure
+  patch -- addresses --> failure
+  patch -- references --> artifact
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
+  patch -- advances --> goal
+```
+
 You can use only the pieces you need. The graph does not require every flow to create every node.
 
 ## Create state in memory

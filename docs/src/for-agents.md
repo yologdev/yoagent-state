@@ -50,6 +50,24 @@ When adding behavior, preserve the goal-centered graph spine:
 goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
 ```
 
+```mermaid
+flowchart LR
+  task["task"]
+  failure["failure"]
+  patch["patch"]
+  goal["goal"]
+  artifact["artifact"]
+  eval["eval"]
+  decision["decision"]
+
+  task -- serves --> goal
+  failure -- blocks --> goal
+  patch -- advances --> goal
+  patch -- references --> artifact
+  patch -- validated_by --> eval
+  patch -- approved_by --> decision
+```
+
 This is not a mandatory linear workflow. It is the common causal shape that lets a later agent answer what goal was being served, what happened, what changed, what evidence existed, and who or what approved the result.
 
 When in doubt, store meaning and references. Let Git and the filesystem store concrete project state.
