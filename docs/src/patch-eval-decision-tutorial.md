@@ -1,6 +1,6 @@
 # Patch, Eval, Decision Tutorial
 
-This tutorial walks through the main `yoagent-state` flow:
+This tutorial walks through the patch promotion lane:
 
 ```text
 failure -> patch -> diff artifact -> eval -> decision -> promotion
@@ -22,7 +22,9 @@ flowchart LR
   decision -- allows --> promoted
 ```
 
-This is the patch lifecycle lane inside the larger goal-centered graph:
+This lane is important because it shows how a proposed change earns promotion: the patch addresses a failure, references a concrete artifact, is validated by an eval, and is approved by a decision.
+
+It is not the whole `yoagent-state` model. It sits inside the larger goal-centered graph:
 
 ```text
 goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
@@ -119,4 +121,4 @@ validated_by: eval_55
 approved_by: decision_9
 ```
 
-That is the core product: not just an event log, but a durable explanation.
+That is the point of this lane: a promoted patch is not just an event log entry. It has a durable explanation.
