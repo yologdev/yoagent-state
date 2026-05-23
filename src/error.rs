@@ -23,4 +23,10 @@ pub enum StateError {
 
     #[error("store error: {0}")]
     Store(String),
+
+    #[error("validation error: {0}")]
+    Validation(String),
+
+    #[error("policy denied: {0}")]
+    PolicyDenied(String),
 }

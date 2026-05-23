@@ -6,7 +6,9 @@ Durable memory and lineage for long-running agents.
 
 Agents do not just need logs. They need to remember what failed, what changed, what tested it, who approved it, and why the current project state exists.
 
-`yoagent-state` is a small Rust continuity layer for agent systems. It records append-only events and replays them into a semantic graph so you can answer the questions that matter after an agent run:
+`yoagent-state` is an ActiveGraph-inspired Rust continuity runtime for agent systems. It records append-only events, replays them into a semantic graph, and gives you primitives for goals, tasks, observations, hypotheses, patches, artifacts, evals, decisions, policies, behaviors, replay, and forks.
+
+It helps answer the questions that matter after an agent run:
 
 - Why does this patch exist?
 - What failure did it address?
@@ -15,7 +17,7 @@ Agents do not just need logs. They need to remember what failed, what changed, w
 - Was it approved, rejected, or promoted?
 
 ```text
-failure -> hypothesis -> patch -> diff -> eval -> decision -> promotion
+goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
 ```
 
 ```text
@@ -70,10 +72,11 @@ YOAGENT_STATE_EVENTS=.yoyo/state/events.jsonl cargo run --bin yoagent-state -- e
 
 `yoagent-state` gives long-running agents durable continuity without taking over your project.
 
-- Records append-only events for runs, tools, failures, patches, evals, decisions, and artifacts.
+- Records append-only events for goals, runs, tools, failures, patches, evals, decisions, and artifacts.
 - Replays events into a small semantic graph projection.
 - Tracks patch lifecycle from proposal to approval, rejection, or promotion.
 - References real project artifacts such as diffs, commits, logs, eval output, and files.
+- Supports typed packs, policy gates, behavior subscriptions, replay, fork, and diff primitives.
 - Exposes lineage queries so agents and humans can explain why state exists.
 
 Git still owns concrete project changes. `yoagent-state` stores why those changes happened, what tested them, and what they mean.

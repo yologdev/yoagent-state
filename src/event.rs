@@ -36,7 +36,7 @@ impl ActorRef {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Event {
     pub id: EventId,
     pub schema_version: u32,

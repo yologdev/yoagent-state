@@ -1,12 +1,14 @@
 # Core Mental Model
 
-`yoagent-state` has three moving parts:
+`yoagent-state` starts with three moving parts:
 
 ```text
 append events -> replay graph -> query lineage
 ```
 
-The design is deliberately small. The graph is not the source of truth. It is a projection derived from append-only events.
+The full runtime adds typed packs, behaviors, policies, replay, forks, frames, and views on top of that event-sourced base.
+
+The graph is not the source of truth. It is a projection derived from append-only events.
 
 ## Event log
 
@@ -16,7 +18,10 @@ Examples:
 
 - `run.started`
 - `tool.finished`
+- `goal.created`
+- `task.created`
 - `failure.observed`
+- `hypothesis.created`
 - `patch.proposed`
 - `patch.status_changed`
 - `artifact.attached`
@@ -44,6 +49,10 @@ The graph is a semantic view of agent state.
 
 Common node kinds:
 
+- `goal`
+- `task`
+- `run`
+- `observation`
 - `failure`
 - `hypothesis`
 - `patch`
@@ -51,9 +60,16 @@ Common node kinds:
 - `decision`
 - `artifact`
 - `file`
+- `model_call`
+- `tool_call`
+- `frame`
 
 Common relation kinds:
 
+- `serves`
+- `blocks`
+- `advances`
+- `observes`
 - `addresses`
 - `explains`
 - `validated_by`
@@ -61,6 +77,9 @@ Common relation kinds:
 - `rejected_by`
 - `modifies`
 - `references`
+- `produced_by`
+- `contained_in_frame`
+- `forked_from`
 
 The graph should stay lossy. It should preserve what matters for continuity and explanation, not every line of a log.
 
@@ -104,3 +123,13 @@ Store paths, URIs, summaries, and hashes where practical.
 On startup, the store scans events and replays them into the graph projection.
 
 This makes state durable without requiring a graph database.
+
+## Behaviors, policies, and packs
+
+Typed packs validate object and relation shapes.
+
+Behaviors react to event patterns and return state ops.
+
+Policies gate sensitive actions by allowing, denying, or requiring approval.
+
+These are runtime features, but they still preserve the same rule: durable state comes from append-only events.

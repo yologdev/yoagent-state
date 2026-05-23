@@ -4,12 +4,12 @@ Guidance for coding agents working on `yoagent-state`.
 
 ## Purpose
 
-`yoagent-state` is a small Rust continuity layer for long-running agents.
+`yoagent-state` is an ActiveGraph-inspired Rust continuity runtime for long-running agents.
 
 It records durable state and lineage:
 
 ```text
-failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
+goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
 ```
 
 Keep the boundary clear:
@@ -37,6 +37,12 @@ The motto is simple but effective.
 - `src/event.rs`: event and actor types
 - `src/ids.rs`: ID newtypes
 - `src/patch.rs`: `StateOp`, `StatePatch`, statuses, preconditions, expected effects
+- `src/primitives.rs`: goals, tasks, observations, hypotheses, evals, decisions, frames, constants
+- `src/schema.rs`: typed packs and relation validation
+- `src/policy.rs`: policies and approval requests
+- `src/behavior.rs`: behavior subscriptions
+- `src/runtime.rs`: `YoAgentRuntime`
+- `src/fork.rs`: fork and graph diff helpers
 - `src/artifact.rs`: artifact references
 - `src/graph.rs`: nodes, relations, graph projection
 - `src/projector.rs`: replay rules
@@ -64,6 +70,11 @@ For docs changes that mention examples, also run:
 cargo run --example basic_lineage
 cargo run --example patch_eval_decision
 cargo run --example yoyo_evolve_demo
+cargo run --example goal_lineage
+cargo run --example behavior_subscription
+cargo run --example policy_approval
+cargo run --example replay_and_fork
+cargo run --example typed_pack
 ```
 
 ## Implementation preferences

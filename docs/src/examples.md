@@ -65,6 +65,46 @@ This records a compact growth loop with:
 
 Use this example when you want to see how project-level artifacts connect to semantic lineage.
 
+## Goal lineage
+
+```bash
+cargo run --example goal_lineage
+```
+
+This demonstrates the fuller v0.2 chain from a goal to a task, failure, patch, eval, and promotion.
+
+## Behavior subscription
+
+```bash
+cargo run --example behavior_subscription
+```
+
+This registers a behavior that reacts to `failure.observed` and creates an investigation task.
+
+## Policy approval
+
+```bash
+cargo run --example policy_approval
+```
+
+This registers a policy requiring approval before node creation. The attempted operation is blocked and an approval request node is created.
+
+## Replay and fork
+
+```bash
+cargo run --example replay_and_fork
+```
+
+This creates a graph, forks at an earlier event, and diffs the fork against current state.
+
+## Typed pack
+
+```bash
+cargo run --example typed_pack
+```
+
+This registers a pack that validates `goal`, `task`, and `serves` relation shapes.
+
 ## Choosing an example
 
 Start here:
@@ -72,6 +112,11 @@ Start here:
 ```text
 new to the model -> basic_lineage
 want the core product value -> patch_eval_decision
+want goal-first lineage -> goal_lineage
+need behaviors -> behavior_subscription
+need policy gates -> policy_approval
+need replay/fork/diff -> replay_and_fork
+need typed validation -> typed_pack
 integrating an agent loop -> yoagent_integration
 building yoyo-style project evolution -> yoyo_evolve_demo
 ```

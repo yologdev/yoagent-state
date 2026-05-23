@@ -35,6 +35,67 @@ state.record_failure(
 
 Use failures for concrete observed problems, not vague concerns.
 
+## Record a goal
+
+```rust
+let goal = Goal::new(
+    GoalId::new("goal_retry_reliability"),
+    "Make retry behavior reliable",
+    "Retry attempts should survive timeout cancellation.",
+    ActorRef::agent("yoyo-evolve"),
+);
+
+state.record_goal(goal).await?;
+```
+
+Goals are the top of the lineage tree.
+
+## Record a task
+
+```rust
+let task = Task {
+    id: TaskId::new("task_retry_timeout"),
+    title: "Fix timeout retry state".to_string(),
+    summary: "Investigate and patch retry state loss.".to_string(),
+    status: TaskStatus::InProgress,
+    goal: Some(GoalId::new("goal_retry_reliability")),
+    created_by: ActorRef::agent("yoyo-evolve"),
+    metadata: serde_json::json!({}),
+};
+
+state.record_task(task).await?;
+```
+
+Tasks link to goals with `serves`.
+
+## Record observations and hypotheses
+
+```rust
+let observation = Observation {
+    id: ObservationId::new("observation_retry_log"),
+    title: "Retry attempt reset observed".to_string(),
+    summary: "The second attempt starts from zero after timeout.".to_string(),
+    observed_in: None,
+    metadata: serde_json::json!({}),
+};
+
+state.record_observation(actor.clone(), observation).await?;
+```
+
+```rust
+let hypothesis = Hypothesis {
+    id: HypothesisId::new("hypothesis_cancelled_future"),
+    title: "Attempt count is scoped to cancelled future".to_string(),
+    summary: "The retry state is dropped when the future is cancelled.".to_string(),
+    confidence: Some(0.8),
+    metadata: serde_json::json!({}),
+};
+
+state
+    .record_hypothesis(actor, hypothesis, Some(NodeId::new("failure_17")))
+    .await?;
+```
+
 ## Apply low-level state ops
 
 Use `apply_ops` when you want direct control over nodes and relations:
@@ -142,3 +203,47 @@ let evals = state.evals_for_patch(PatchId::new("patch_42")).await;
 ```
 
 These helpers are intentionally narrow and practical.
+
+## Use the runtime layer
+
+`YoAgentRuntime` adds typed packs, behaviors, and policies:
+
+```rust
+let state = YoAgentState::load(MemoryEventStore::new()).await?;
+let mut runtime = YoAgentRuntime::new(state.clone());
+```
+
+Register a typed pack:
+
+```rust
+runtime.register_pack(
+    Pack::new(PackId::new("pack_lineage"), "lineage", "0.1.0")
+        .add_object_type(ObjectType::new("goal").require("title"))
+        .add_object_type(ObjectType::new("task").require("title"))
+        .add_relation_type(
+            RelationType::new("serves")
+                .from_kind("task")
+                .to_kind("goal"),
+        ),
+);
+```
+
+Register a policy:
+
+```rust
+runtime.register_policy(Policy::require_approval(
+    PolicyId::new("policy_create_node_review"),
+    "Creating graph nodes requires review",
+    PolicyAction::CreateNode,
+));
+```
+
+Fork and diff:
+
+```rust
+let fork = state
+    .fork_at_event(ForkId::new("fork_before_task"), Some(event_id))
+    .await?;
+
+let diff = diff_graphs(&fork.graph, &state.graph().await);
+```

@@ -4,6 +4,7 @@
 - [Quick Start](./getting-started.md)
 - [Why Agents Need State](./why-agent-state.md)
 - [Core Mental Model](./mental-model.md)
+- [ActiveGraph-Inspired Runtime](./activegraph-runtime.md)
 - [First Lineage Example](./first-lineage-example.md)
 - [Patch, Eval, Decision Tutorial](./patch-eval-decision-tutorial.md)
 - [Examples](./examples.md)

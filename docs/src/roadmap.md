@@ -1,6 +1,6 @@
 # Roadmap
 
-`yoagent-state` starts intentionally small: append-only events, a replayed graph projection, patch lineage, artifact references, examples, and mdBook docs.
+`yoagent-state` starts with an event-sourced graph runtime: append-only events, replayed graph projection, goal-first lineage, patch lifecycle, artifacts, policies, behaviors, forks, examples, and mdBook docs.
 
 This roadmap lists the likely next steps without turning the project into a workflow engine, graph database, Git replacement, or universal agent framework.
 
@@ -13,6 +13,8 @@ Implemented:
 - Append-only event recording and replay into an in-memory graph.
 - State operations for nodes, relations, stale markers, tombstones, and artifacts.
 - Patch proposal, patch status changes, eval records, decision records, and lineage queries.
+- Goal, task, observation, hypothesis, model call, tool call, frame, fork, behavior, policy, pack, and view IDs.
+- Runtime layer for typed packs, policy gates, behavior subscriptions, replay, fork, and diff.
 - Small `yoagent` sink adapter for run/model/tool lifecycle events.
 - Coarse project observer helpers for changed files and diff artifacts.
 - CLI for init, events, graph, node, lineage, patch list/show, and replay.

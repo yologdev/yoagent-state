@@ -11,8 +11,14 @@ yoagent-state graph
 yoagent-state node <id>
 yoagent-state lineage <id>
 yoagent-state lineage <id> --markdown
+yoagent-state goal create <id> <title> [summary]
+yoagent-state goal list
+yoagent-state goal show <id>
+yoagent-state goal status <id> <open|in-progress|satisfied|abandoned|blocked|stale>
 yoagent-state patch list
 yoagent-state patch show <id>
+yoagent-state patch promote <id>
+yoagent-state fork create <id> [event-id]
 yoagent-state replay
 ```
 
@@ -68,6 +74,24 @@ List patches:
 cargo run --bin yoagent-state -- patch list
 ```
 
+Create a goal:
+
+```bash
+cargo run --bin yoagent-state -- goal create goal_retry "Make retry reliable"
+```
+
+Update goal status:
+
+```bash
+cargo run --bin yoagent-state -- goal status goal_retry in-progress
+```
+
+Create a fork at an event:
+
+```bash
+cargo run --bin yoagent-state -- fork create fork_before_patch event_123
+```
+
 Show one patch:
 
 ```bash
@@ -76,4 +100,4 @@ cargo run --bin yoagent-state -- patch show patch_42
 
 ## Current limitation
 
-The CLI is inspection-first. It does not yet create complete patch/eval/decision flows from shell commands. For now, create state through the Rust API and inspect it through the CLI.
+The CLI is still intentionally small. Use the Rust API for full behavior/policy/pack flows and use the CLI for local inspection and simple goal/patch/fork operations.
