@@ -10,13 +10,15 @@ Why does this state exist?
 
 `yoagent-state` is a small Rust continuity layer for long-running agents. It records durable state and lineage for agent work without replacing the agent loop, Git, the filesystem, CI, or a project database.
 
-The core chain is:
+The full continuity chain starts from a goal:
 
 ```text
-failure -> hypothesis -> patch -> diff -> eval -> decision -> promotion
+goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
 ```
 
-That chain is the product. It tells you what failed, what the agent believed, what it proposed, what project artifact it referenced, what tested it, and what decision approved or rejected it.
+That chain is the product. It tells you what the agent was trying to achieve, what work it started, what happened during the run, what failed, what the agent believed, what it proposed, what project artifact it referenced, what tested it, and what decision approved or rejected it.
+
+A diff is usually one of those artifacts. The graph can also attach test logs, model transcripts, screenshots, benchmark output, review notes, or any other evidence an agent needs to explain the work later.
 
 ## What yoagent-state does
 

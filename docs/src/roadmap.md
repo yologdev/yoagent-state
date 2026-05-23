@@ -128,7 +128,7 @@ Goal: prove the growth loop end to end.
 
 Success criteria:
 
-- One demo shows failure -> patch -> diff -> eval -> decision -> promotion with a readable lineage report.
+- One demo shows failure -> patch -> diff artifact -> eval -> decision -> promotion with a readable lineage report.
 
 ## Phase 7: Policy and Safety Gates
 
