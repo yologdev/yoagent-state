@@ -20,7 +20,7 @@ cd yoagent-state
 cargo run --example patch_eval_decision
 ```
 
-Expected shape of the output:
+You should see a lineage report like this:
 
 ```text
 # Persist retry state across timeout
@@ -38,7 +38,9 @@ Expected shape of the output:
 - approved_by -> decision_9
 ```
 
-That output is the core promise: a patch is not just a change. It has a reason, evidence, validation, and a decision.
+Read it as: `patch_42` was promoted, references a Git diff artifact, addresses `failure_17`, was validated by `eval_55`, and was approved by `decision_9`.
+
+That is the core promise: a patch is not just a change. It has a reason, evidence, validation, and a decision.
 
 ## Run the test suite
 

@@ -32,7 +32,7 @@ cd yoagent-state
 cargo run --example patch_eval_decision
 ```
 
-Expected shape of the output:
+You should see a lineage report like this:
 
 ```text
 # Persist retry state across timeout
@@ -49,6 +49,8 @@ Expected shape of the output:
 - validated_by -> eval_55
 - approved_by -> decision_9
 ```
+
+This means `patch_42` was promoted, references a Git diff artifact, addresses `failure_17`, was validated by `eval_55`, and was approved by `decision_9`.
 
 Run the full test suite:
 
