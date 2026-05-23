@@ -119,7 +119,7 @@ The future plan is tracked in [ROADMAP.md](./ROADMAP.md) and mirrored in the mdB
 
 ## Acknowledgments
 
-The design is informed by ActiveState/ActiveGraph-style ideas around durable agent state and lineage, especially [ActiveGraph](https://github.com/yoheinakajima/activegraph) by [Yohei Nakajima](https://github.com/yoheinakajima). This project is independent and intentionally smaller in scope. See [ACKNOWLEDGMENTS.md](./ACKNOWLEDGMENTS.md).
+The core idea for `yoagent-state` comes from [Yohei Nakajima](https://github.com/yoheinakajima) and his [ActiveGraph](https://github.com/yoheinakajima/activegraph) work. This project is an independent Rust implementation inspired by that idea, intentionally kept smaller in scope for `yoagent` and `yoyo evolve`. See [ACKNOWLEDGMENTS.md](./ACKNOWLEDGMENTS.md).
 
 ## License
 
