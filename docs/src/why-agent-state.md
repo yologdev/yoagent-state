@@ -26,6 +26,14 @@ That is not enough when someone later asks:
 
 `yoagent-state` records that chain directly.
 
+In the current runtime, that chain usually starts with durable intent:
+
+```text
+goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
+```
+
+The exact run may only use part of the graph, but the state model has a place for each piece.
+
 ## Logs are not enough
 
 Logs are chronological. Lineage is causal.

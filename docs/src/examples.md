@@ -1,6 +1,14 @@
 # Examples
 
-The examples move from small lineage to a compact yoyo evolve-style flow.
+The examples move from small lineage to the current goal-centered runtime features.
+
+## Goal lineage
+
+```bash
+cargo run --example goal_lineage
+```
+
+Start here for the current core graph shape. It shows a goal being served by a task, blocked by a failure, and advanced by a patch.
 
 ## Basic lineage
 
@@ -24,7 +32,7 @@ You should see a markdown lineage report with the hypothesis as the root and the
 cargo run --example patch_eval_decision
 ```
 
-This is the main MVP demo.
+This is the main patch lifecycle demo.
 
 It records:
 
@@ -65,14 +73,6 @@ This records a compact growth loop with:
 
 Use this example when you want to see how project-level artifacts connect to semantic lineage.
 
-## Goal lineage
-
-```bash
-cargo run --example goal_lineage
-```
-
-This demonstrates the fuller v0.2 chain from a goal to a task, failure, patch, eval, and promotion.
-
 ## Behavior subscription
 
 ```bash
@@ -110,9 +110,9 @@ This registers a pack that validates `goal`, `task`, and `serves` relation shape
 Start here:
 
 ```text
-new to the model -> basic_lineage
-want the core product value -> patch_eval_decision
-want goal-first lineage -> goal_lineage
+new to the current model -> goal_lineage
+want the smallest relation -> basic_lineage
+want the patch lifecycle -> patch_eval_decision
 need behaviors -> behavior_subscription
 need policy gates -> policy_approval
 need replay/fork/diff -> replay_and_fork

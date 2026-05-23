@@ -2,6 +2,14 @@
 
 This page shows the common tasks you perform with `yoagent-state`.
 
+The current API is organized around this goal-centered graph shape:
+
+```text
+goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
+```
+
+You can use only the pieces you need. The graph does not require every flow to create every node.
+
 ## Create state in memory
 
 Use memory state for tests, examples, and short-lived runs:
@@ -48,7 +56,7 @@ let goal = Goal::new(
 state.record_goal(goal).await?;
 ```
 
-Goals are the top of the lineage tree.
+Goals are the top of the common lineage graph.
 
 ## Record a task
 

@@ -10,6 +10,8 @@ Agents do not just need logs. They need to remember what failed, what changed, w
 
 It helps answer the questions that matter after an agent run:
 
+- What goal was the agent trying to satisfy?
+- What task, run, or observation produced this state?
 - Why does this patch exist?
 - What failure did it address?
 - What eval validated it?
@@ -19,6 +21,8 @@ It helps answer the questions that matter after an agent run:
 ```text
 goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
 ```
+
+That line is the common causal spine, not a required linear workflow. A diff is an artifact. Promotion is a patch status transition backed by evals and decisions.
 
 ```text
 yoagent executes.
@@ -31,28 +35,31 @@ yoyo evolve improves.
 ```bash
 git clone https://github.com/yologdev/yoagent-state.git
 cd yoagent-state
-cargo run --example patch_eval_decision
+cargo run --example goal_lineage
 ```
 
 You should see a lineage report like this:
 
 ```text
-# Persist retry state across timeout
+# Make retry behavior reliable
 
-- id: patch_42
-- kind: patch
-- status: Promoted
+- id: goal_retry_reliability
+- kind: goal
+- status: InProgress
 
-## Artifacts
-- git.diff: file://.yoyo/artifacts/patch_42.diff
-
-## Outgoing
-- addresses -> failure_17
-- validated_by -> eval_55
-- approved_by -> decision_9
+## Incoming
+- serves <- task_retry_timeout
+- blocks <- failure_retry_timeout
+- advances <- patch_retry_state
 ```
 
-This means `patch_42` was promoted, references a Git diff artifact, addresses `failure_17`, was validated by `eval_55`, and was approved by `decision_9`.
+This means the goal is being served by a task, blocked by a failure, and advanced by a patch.
+
+To see the patch/eval/decision lane:
+
+```bash
+cargo run --example patch_eval_decision
+```
 
 Run the full test suite:
 
@@ -72,9 +79,9 @@ YOAGENT_STATE_EVENTS=.yoyo/state/events.jsonl cargo run --bin yoagent-state -- e
 
 `yoagent-state` gives long-running agents durable continuity without taking over your project.
 
-- Records append-only events for goals, runs, tools, failures, patches, evals, decisions, and artifacts.
+- Records append-only events for goals, tasks, runs, observations, model calls, tool calls, failures, hypotheses, patches, evals, decisions, and artifacts.
 - Replays events into a small semantic graph projection.
-- Tracks patch lifecycle from proposal to approval, rejection, or promotion.
+- Tracks goal/task lineage and patch lifecycle from proposal to approval, rejection, or promotion.
 - References real project artifacts such as diffs, commits, logs, eval output, and files.
 - Supports typed packs, policy gates, behavior subscriptions, replay, fork, and diff primitives.
 - Exposes lineage queries so agents and humans can explain why state exists.
@@ -169,7 +176,7 @@ The future plan is tracked in [ROADMAP.md](./ROADMAP.md) and mirrored in the mdB
 
 ## Acknowledgments
 
-The core idea for `yoagent-state` comes from [Yohei Nakajima](https://github.com/yoheinakajima) and his [ActiveGraph](https://github.com/yoheinakajima/activegraph) work. This project is an independent Rust implementation inspired by that idea, intentionally kept smaller in scope for `yoagent` and `yoyo evolve`. See [ACKNOWLEDGMENTS.md](./ACKNOWLEDGMENTS.md).
+The core idea for `yoagent-state` comes from [Yohei Nakajima](https://github.com/yoheinakajima) and his [ActiveGraph](https://github.com/yoheinakajima/activegraph) work. This project is an independent Rust implementation inspired by that idea, with a Rust-first architecture for `yoagent` and `yoyo evolve`. See [ACKNOWLEDGMENTS.md](./ACKNOWLEDGMENTS.md).
 
 ## License
 

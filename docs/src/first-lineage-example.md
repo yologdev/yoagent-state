@@ -43,7 +43,9 @@ Long-running agents need to preserve small facts like this. A later patch can ad
 The chain grows naturally:
 
 ```text
-hypothesis -> failure -> patch -> eval -> decision
+goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
 ```
+
+For this tiny example, only the `hypothesis -> failure` edge is created. The larger runtime can later connect that edge back to a goal and forward to a patch, artifacts, evals, and decisions.
 
 Use this pattern whenever an agent observes something and forms a belief that should survive beyond the current run.

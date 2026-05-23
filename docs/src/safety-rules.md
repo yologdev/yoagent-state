@@ -45,4 +45,4 @@ Hashes make lineage more trustworthy.
 
 ## Keep the layer small
 
-Do not turn `yoagent-state` into a hidden automation engine. It should record state and lineage first. Automation can come later, after the state model proves useful.
+Do not turn `yoagent-state` into a hidden automation engine. Behaviors and policies are allowed, but they should be explicit, registered, replayable, and represented in the graph. State and lineage come first.

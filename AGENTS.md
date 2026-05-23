@@ -12,6 +12,8 @@ It records durable state and lineage:
 goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
 ```
 
+Treat this as a causal graph spine, not a mandatory linear workflow. Diffs are artifacts. Promotion is a patch status transition backed by eval and decision lineage.
+
 Keep the boundary clear:
 
 ```text

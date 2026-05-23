@@ -18,7 +18,11 @@ goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact
 
 That chain is the product. It tells you what the agent was trying to achieve, what work it started, what happened during the run, what failed, what the agent believed, what it proposed, what project artifact it referenced, what tested it, and what decision approved or rejected it.
 
+It is a causal spine, not a required single linked list. Some runs start at a failure, some start at a goal, and some only record tool or model calls. The important part is that the graph can connect intent, execution, evidence, change, and decision.
+
 A diff is usually one of those artifacts. The graph can also attach test logs, model transcripts, screenshots, benchmark output, review notes, or any other evidence an agent needs to explain the work later.
+
+Promotion is represented as a patch status transition. The promotion should be backed by eval and decision lineage, not hidden inside a commit message.
 
 ## What yoagent-state does
 

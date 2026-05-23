@@ -6,6 +6,12 @@ This tutorial walks through the main `yoagent-state` flow:
 failure -> patch -> diff artifact -> eval -> decision -> promotion
 ```
 
+This is the patch lifecycle lane inside the larger goal-centered graph:
+
+```text
+goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
+```
+
 Run:
 
 ```bash

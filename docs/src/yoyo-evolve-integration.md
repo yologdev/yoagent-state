@@ -9,12 +9,15 @@ It needs to grow a project while preserving why each change exists.
 The intended loop is:
 
 ```text
+record goal
+create task
 observe project
 record snapshot reference
-run task or eval
+run agent task or eval
 observe failure
 create hypothesis
 propose patch
+attach artifacts
 apply patch in branch or worktree
 run eval
 record eval result
@@ -29,6 +32,7 @@ For a project yoyo is improving, the state layer should track:
 
 - why a module exists
 - why a dependency was added
+- what goal and task the change served
 - what test validates behavior
 - what failure caused a patch
 - what decision approved it

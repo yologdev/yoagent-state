@@ -17,30 +17,33 @@ cargo --version
 ```bash
 git clone https://github.com/yologdev/yoagent-state.git
 cd yoagent-state
-cargo run --example patch_eval_decision
+cargo run --example goal_lineage
 ```
 
 You should see a lineage report like this:
 
 ```text
-# Persist retry state across timeout
+# Make retry behavior reliable
 
-- id: patch_42
-- kind: patch
-- status: Promoted
+- id: goal_retry_reliability
+- kind: goal
+- status: InProgress
 
-## Artifacts
-- git.diff: file://.yoyo/artifacts/patch_42.diff
-
-## Outgoing
-- addresses -> failure_17
-- validated_by -> eval_55
-- approved_by -> decision_9
+## Incoming
+- serves <- task_retry_timeout
+- blocks <- failure_retry_timeout
+- advances <- patch_retry_state
 ```
 
-Read it as: `patch_42` was promoted, references a Git diff artifact, addresses `failure_17`, was validated by `eval_55`, and was approved by `decision_9`.
+Read it as: `goal_retry_reliability` is being served by a task, blocked by a failure, and advanced by a patch.
 
-That is the core promise: a patch is not just a change. It has a reason, evidence, validation, and a decision.
+That is the core promise: state is not just a log. It is a graph that connects intent, work, evidence, change, and decision.
+
+To inspect the patch/eval/decision lane directly:
+
+```bash
+cargo run --example patch_eval_decision
+```
 
 ## Run the test suite
 
@@ -48,7 +51,7 @@ That is the core promise: a patch is not just a change. It has a reason, evidenc
 cargo test
 ```
 
-The tests cover event append and scan, state ops, replay, patch status transitions, lineage, JSONL persistence, and changed-file observer helpers.
+The tests cover event append and scan, state ops, replay, goal/task/failure lineage, typed packs, policy approvals, behavior subscriptions, fork/diff helpers, patch status transitions, lineage, JSONL persistence, and changed-file observer helpers.
 
 ## Try local persistence
 
@@ -76,4 +79,5 @@ The default local event log path is `.yoagent-state/events.jsonl`.
 
 - [Why Agents Need State](./why-agent-state.md)
 - [First Lineage Example](./first-lineage-example.md)
+- [ActiveGraph-Inspired Runtime](./activegraph-runtime.md)
 - [Patch, Eval, Decision Tutorial](./patch-eval-decision-tutorial.md)

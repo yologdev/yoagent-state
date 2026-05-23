@@ -4,7 +4,7 @@
 
 This roadmap lists the likely next steps without turning the project into a workflow engine, graph database, Git replacement, or universal agent framework.
 
-## Current MVP
+## Current Implementation
 
 Implemented:
 
@@ -12,16 +12,24 @@ Implemented:
 - `MemoryEventStore` and `JsonlEventStore`.
 - Append-only event recording and replay into an in-memory graph.
 - State operations for nodes, relations, stale markers, tombstones, and artifacts.
-- Patch proposal, patch status changes, eval records, decision records, and lineage queries.
-- Goal, task, observation, hypothesis, model call, tool call, frame, fork, behavior, policy, pack, and view IDs.
+- Goal, task, run, observation, failure, hypothesis, patch, eval, decision, project snapshot, model call, tool call, frame, fork, behavior, policy, pack, and view IDs.
+- Goal/task helpers, failure observation, hypothesis records, patch proposal, patch status changes, eval records, decision records, and lineage queries.
 - Runtime layer for typed packs, policy gates, behavior subscriptions, replay, fork, and diff.
 - Small `yoagent` sink adapter for run/model/tool lifecycle events.
 - Coarse project observer helpers for changed files and diff artifacts.
-- CLI for init, events, graph, node, lineage, patch list/show, and replay.
+- CLI for init, events, graph, node, lineage, goal create/list/show/status, patch list/show/promote, replay, and fork create.
 - Examples and regression tests for the main state flows.
 - mdBook user guide.
 
-## Phase 1: MVP Hardening
+The current core graph shape is:
+
+```text
+goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
+```
+
+This is a causal spine. It does not require every flow to create every node.
+
+## Phase 1: Runtime Hardening
 
 Goal: make the current crate more reliable for early users.
 
@@ -36,7 +44,7 @@ Goal: make the current crate more reliable for early users.
 Success criteria:
 
 - Public examples compile as doc tests.
-- CLI behavior is covered by regression tests.
+- CLI behavior is covered by regression tests for goal, patch, replay, and fork commands.
 - Event JSON compatibility is protected by fixtures.
 
 ## Phase 2: Persistence and Replay
@@ -128,7 +136,7 @@ Goal: prove the growth loop end to end.
 
 Success criteria:
 
-- One demo shows failure -> patch -> diff artifact -> eval -> decision -> promotion with a readable lineage report.
+- One demo shows goal -> task -> failure -> patch -> diff artifact -> eval -> decision -> promotion with a readable lineage report.
 
 ## Phase 7: Policy and Safety Gates
 
@@ -139,7 +147,7 @@ Goal: make risky mutation explicit.
   - tool configuration changes
   - memory/state mutation
   - project patch promotion
-- Record policy decisions as first-class decision nodes.
+- Expand policy decisions as first-class decision nodes across more runtime actions.
 - Require evidence before promotion.
 - Add stale/conflicted status helpers for unsafe bases.
 
@@ -151,8 +159,8 @@ Success criteria:
 
 Potential extensions:
 
-- Behavior subscriptions for simple reactions like “failure observed -> create task”.
-- Fork and replay support for comparing alternate histories.
+- More behavior subscription patterns beyond “failure observed -> create task”.
+- Richer fork merge and promotion workflows.
 - Richer project observers for Rust symbols, Cargo dependencies, and test surfaces.
 - Web or TUI inspection UI.
 - Remote artifact storage.

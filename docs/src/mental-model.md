@@ -10,6 +10,28 @@ The full runtime adds typed packs, behaviors, policies, replay, forks, frames, a
 
 The graph is not the source of truth. It is a projection derived from append-only events.
 
+## Core graph shape
+
+The current runtime is goal-centered. The common causal spine is:
+
+```text
+goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
+```
+
+Read that as a graph shape, not a required pipeline:
+
+- `goal` captures the durable intent.
+- `task` is concrete work that serves a goal.
+- `run`, `model_call`, and `tool_call` record execution.
+- `observation`, `failure`, and `hypothesis` preserve what the agent noticed and believed.
+- `patch` proposes a state or project change.
+- `artifact` references concrete evidence such as diffs, logs, files, screenshots, or eval output.
+- `eval` records validation.
+- `decision` records approval, rejection, or review state.
+- promotion is a `PatchStatus::Promoted` transition, not a separate graph node.
+
+Side primitives such as policies, behaviors, packs, frames, forks, and views make this graph operational without changing the source-of-truth rule.
+
 ## Event log
 
 An event is an immutable fact about something that happened.
@@ -103,6 +125,8 @@ Patch lifecycle:
 ```text
 proposed -> applied_in_fork -> evaluated -> approved/rejected -> promoted
 ```
+
+This lifecycle is one lane inside the larger goal-centered graph. A patch usually advances a goal, addresses a failure, references artifacts, is validated by evals, and is approved or rejected by decisions.
 
 ## Artifacts
 

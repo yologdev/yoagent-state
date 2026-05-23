@@ -22,14 +22,18 @@ The core lineage path now starts from goals:
 goal -> task -> run -> observation -> failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
 ```
 
+This is the common graph spine. It is not a claim that every agent run must create every node. `artifact` includes diffs, logs, screenshots, files, eval output, and other external evidence. `promotion` is represented by the patch lifecycle status.
+
 `yoagent-state` now has first-class IDs and helpers for:
 
 - goals
 - tasks
+- runs
 - observations
 - hypotheses
 - evals
 - decisions
+- project snapshots
 - model calls
 - tool calls
 - frames
