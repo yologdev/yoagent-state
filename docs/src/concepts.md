@@ -22,11 +22,11 @@ Only `state.ops_applied` mutates the graph projection directly.
 flowchart LR
   event["event"]
   ops["state.ops_applied"]
-  graph["graph projection"]
+  graphNode["graph projection"]
   history["historical event only"]
 
   event --> history
-  ops --> graph
+  ops --> graphNode
 ```
 
 ## Graph

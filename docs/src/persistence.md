@@ -42,10 +42,10 @@ flowchart LR
   jsonl["events.jsonl<br/>append-only"]
   scan["scan"]
   replay["replay"]
-  graph["in-memory graph projection"]
+  graphNode["in-memory graph projection"]
   query["lineage / graph queries"]
 
-  jsonl --> scan --> replay --> graph --> query
+  jsonl --> scan --> replay --> graphNode --> query
 ```
 
 The event log is durable. The graph is derived.

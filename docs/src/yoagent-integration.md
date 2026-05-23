@@ -15,9 +15,9 @@ flowchart LR
   sink["YoAgentStateSink"]
   adapter["YoAgentStateAdapter"]
   events["append-only events"]
-  graph["semantic graph"]
+  graphNode["semantic graph"]
 
-  yoagent --> sink --> adapter --> events --> graph
+  yoagent --> sink --> adapter --> events --> graphNode
 ```
 
 ## Adapter shape

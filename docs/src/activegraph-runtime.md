@@ -18,15 +18,15 @@ append-only event log
 flowchart LR
   log["append-only event log"]
   replay["deterministic replay"]
-  graph["typed graph projection"]
+  graphNode["typed graph projection"]
   patterns["pattern subscriptions"]
   behaviors["behaviors"]
   policies["policy gates"]
   forks["replay / fork / diff"]
 
-  log --> replay --> graph --> patterns --> behaviors
-  graph --> policies
-  graph --> forks
+  log --> replay --> graphNode --> patterns --> behaviors
+  graphNode --> policies
+  graphNode --> forks
   behaviors --> log
   policies --> log
 ```
@@ -130,9 +130,9 @@ flowchart LR
   behavior["matching behavior"]
   task["create investigation task"]
   ops["state.ops_applied event"]
-  graph["replayed graph"]
+  graphNode["replayed graph"]
 
-  event --> behavior --> task --> ops --> graph
+  event --> behavior --> task --> ops --> graphNode
 ```
 
 This keeps behavior execution auditable.

@@ -10,10 +10,10 @@ append events -> replay graph -> query lineage
 flowchart LR
   events["append-only events"]
   replay["deterministic replay"]
-  graph["semantic graph projection"]
+  graphNode["semantic graph projection"]
   lineage["lineage queries"]
 
-  events --> replay --> graph --> lineage
+  events --> replay --> graphNode --> lineage
 ```
 
 The full runtime adds typed packs, behaviors, policies, replay, forks, frames, and views on top of that event-sourced base.
@@ -202,9 +202,9 @@ flowchart LR
   store["EventStore"]
   scan["scan events"]
   projector["Projector"]
-  graph["Graph"]
+  graphNode["Graph"]
 
-  store --> scan --> projector --> graph
+  store --> scan --> projector --> graphNode
 ```
 
 This makes state durable without requiring a graph database.
@@ -224,13 +224,13 @@ flowchart TB
   policy["policy gate"]
   behavior["behavior subscription"]
   ops["state ops"]
-  graph["graph projection"]
+  graphNode["graph projection"]
 
   event --> pack --> policy
   policy -- allow --> ops
-  policy -- require approval --> graph
+  policy -- require approval --> graphNode
   event --> behavior --> ops
-  ops --> graph
+  ops --> graphNode
 ```
 
 These are runtime features, but they still preserve the same rule: durable state comes from append-only events.
