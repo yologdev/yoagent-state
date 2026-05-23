@@ -1,0 +1,80 @@
+# AGENTS.md
+
+Guidance for coding agents working on `yoagent-state`.
+
+## Purpose
+
+`yoagent-state` is a small Rust continuity layer for long-running agents.
+
+It records durable state and lineage:
+
+```text
+failure -> hypothesis -> patch -> artifact -> eval -> decision -> promotion
+```
+
+Keep the boundary clear:
+
+```text
+Git stores what changed.
+yoagent-state stores why it changed, what tested it, and what it means.
+```
+
+## Do not expand the scope casually
+
+Do not turn this crate into:
+
+- a Git replacement
+- a workflow engine
+- a graph database platform
+- a compiler or AST database
+- a universal memory system
+- a hidden self-modification mechanism
+
+The motto is simple but effective.
+
+## Repo map
+
+- `src/event.rs`: event and actor types
+- `src/ids.rs`: ID newtypes
+- `src/patch.rs`: `StateOp`, `StatePatch`, statuses, preconditions, expected effects
+- `src/artifact.rs`: artifact references
+- `src/graph.rs`: nodes, relations, graph projection
+- `src/projector.rs`: replay rules
+- `src/store.rs`: `EventStore`, memory store, JSONL store
+- `src/state.rs`: main `YoAgentState` API
+- `src/adapter.rs`: optional yoagent sink adapter
+- `src/observer.rs`: coarse project-diff helpers
+- `src/bin/yoagent-state.rs`: CLI
+- `examples/`: runnable usage examples
+- `tests/state_flow.rs`: integration tests
+- `docs/src/`: mdBook source
+
+## Verification
+
+Run before finishing changes:
+
+```bash
+cargo test
+/Users/yuanhao/.cargo/bin/mdbook build docs
+```
+
+For docs changes that mention examples, also run:
+
+```bash
+cargo run --example basic_lineage
+cargo run --example patch_eval_decision
+cargo run --example yoyo_evolve_demo
+```
+
+## Implementation preferences
+
+- Prefer append-only events and explicit state ops.
+- Keep graph projection lossy and semantic.
+- Reference external artifacts instead of embedding large blobs.
+- Add tests when changing behavior.
+- Keep docs honest about what exists now versus roadmap items.
+- Preserve MIT-only licensing.
+
+## Attribution
+
+The core idea comes from Yohei Nakajima and ActiveGraph. Preserve the acknowledgment in README and docs.

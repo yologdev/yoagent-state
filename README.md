@@ -1,18 +1,22 @@
 # yoagent-state
 
-A lightweight Rust continuity layer for long-running agents.
+Durable memory and lineage for long-running agents.
 
-`yoagent-state` records durable state and lineage for agent work:
+![yoagent-state banner](docs/images/banner.png)
 
-- append-only events
-- graph projection
-- patches
-- evals
-- decisions
-- artifacts
-- project references
+Agents do not just need logs. They need to remember what failed, what changed, what tested it, who approved it, and why the current project state exists.
 
-It is designed to sit on top of `yoagent`.
+`yoagent-state` is a small Rust continuity layer for agent systems. It records append-only events and replays them into a semantic graph so you can answer the questions that matter after an agent run:
+
+- Why does this patch exist?
+- What failure did it address?
+- What eval validated it?
+- What files or artifacts did it reference?
+- Was it approved, rejected, or promoted?
+
+```text
+failure -> hypothesis -> patch -> diff -> eval -> decision -> promotion
+```
 
 ```text
 yoagent executes.
@@ -20,45 +24,71 @@ yoagent-state remembers.
 yoyo evolve improves.
 ```
 
-## Motto
-
-Simple but effective.
-
-## What it is
-
-`yoagent-state` stores agent-facing meaning: what failed, what the agent believed, which patch addressed the failure, what eval tested it, and which decision promoted or rejected it.
-
-Git and the filesystem still own concrete project state. This crate stores references to commits, diffs, files, logs, and eval outputs.
-
-## Non-goals
-
-- not a workflow engine
-- not a graph database
-- not a replacement for Git
-- not a full project database
-- not a universal agent framework
-
-## Quick Start
+## Start in 60 seconds
 
 ```bash
-cargo test
+git clone https://github.com/yologdev/yoagent-state.git
+cd yoagent-state
 cargo run --example patch_eval_decision
 ```
 
-Create a persisted event log:
+Expected shape of the output:
+
+```text
+# Persist retry state across timeout
+
+- id: patch_42
+- kind: patch
+- status: Promoted
+
+## Artifacts
+- git.diff: file://.yoyo/artifacts/patch_42.diff
+
+## Outgoing
+- addresses -> failure_17
+- validated_by -> eval_55
+- approved_by -> decision_9
+```
+
+Run the full test suite:
+
+```bash
+cargo test
+```
+
+Try local JSONL persistence:
 
 ```bash
 cargo run --bin yoagent-state -- init
 cargo run --bin yoagent-state -- graph
-```
-
-Use a custom event log path:
-
-```bash
 YOAGENT_STATE_EVENTS=.yoyo/state/events.jsonl cargo run --bin yoagent-state -- events
 ```
 
-## Minimal Example
+## What it does
+
+`yoagent-state` gives long-running agents durable continuity without taking over your project.
+
+- Records append-only events for runs, tools, failures, patches, evals, decisions, and artifacts.
+- Replays events into a small semantic graph projection.
+- Tracks patch lifecycle from proposal to approval, rejection, or promotion.
+- References real project artifacts such as diffs, commits, logs, eval output, and files.
+- Exposes lineage queries so agents and humans can explain why state exists.
+
+Git still owns concrete project changes. `yoagent-state` stores why those changes happened, what tested them, and what they mean.
+
+## When you need this
+
+Use `yoagent-state` when:
+
+- your agent runs longer than one prompt
+- you need to explain why a code change exists
+- you want eval and decision history attached to patches
+- you want durable state without adopting a workflow engine or graph database
+- you are building on `yoagent`, `yoyo evolve`, or another Rust agent loop
+
+You probably do not need it for one-off scripts, stateless chat flows, or projects where Git commit messages already capture enough context.
+
+## Minimal Rust example
 
 ```rust
 use serde_json::json;
@@ -83,9 +113,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Documentation
+## What it is not
 
-The user guide is an mdBook under `docs/`.
+`yoagent-state` is intentionally small.
+
+- not a replacement for Git
+- not a workflow engine
+- not a graph database
+- not a full project database
+- not a universal agent framework
+- not a hidden self-modification system
+
+The motto is simple but effective.
+
+## Documentation
 
 Hosted docs:
 
@@ -93,7 +134,7 @@ Hosted docs:
 https://yologdev.github.io/yoagent-state/
 ```
 
-Run the docs locally:
+Run the mdBook locally:
 
 ```bash
 mdbook serve docs
@@ -112,6 +153,10 @@ If Cargo's binary directory is not on your `PATH`, run it directly:
 ```
 
 GitHub Pages is deployed by `.github/workflows/docs.yml`. In the GitHub repo settings, Pages source should be set to **GitHub Actions**.
+
+## For coding agents
+
+Read [AGENTS.md](./AGENTS.md) before modifying the repo. It explains the project boundary, core files, test commands, and the simple-but-effective design rule.
 
 ## Roadmap
 

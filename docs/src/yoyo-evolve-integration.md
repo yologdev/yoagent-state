@@ -1,6 +1,12 @@
 # yoyo evolve Integration
 
-The intended growth loop is:
+`yoyo evolve` is the first serious use case for `yoagent-state`.
+
+It needs to grow a project while preserving why each change exists.
+
+## Growth loop
+
+The intended loop is:
 
 ```text
 observe project
@@ -17,7 +23,9 @@ promote if approved
 record lineage
 ```
 
-For projects that yoyo is improving, `yoagent-state` should track:
+## What yoagent-state tracks
+
+For a project yoyo is improving, the state layer should track:
 
 - why a module exists
 - why a dependency was added
@@ -28,3 +36,45 @@ For projects that yoyo is improving, `yoagent-state` should track:
 - what version introduced behavior
 
 Concrete project diffs remain external. Reference them with `ArtifactRef` and `ProjectRef`.
+
+## Demo
+
+Run:
+
+```bash
+cargo run --example yoyo_evolve_demo
+```
+
+The demo records:
+
+- a retry failure
+- a base project reference
+- a diff artifact
+- changed file relations
+- an eval result
+- a human approval decision
+- a promoted patch status
+
+The resulting lineage includes:
+
+```text
+patch_retry_timeout
+addresses -> failure_retry_timeout
+modifies -> file:crates/yoagent-runtime/src/tool.rs
+modifies -> file:crates/yoagent-runtime/tests/retry.rs
+validated_by -> eval_retry_timeout
+approved_by -> decision_promote_retry_timeout
+```
+
+## Implementation rule
+
+Do not hide mutation.
+
+Every meaningful project change should have:
+
+- a patch
+- an artifact reference
+- evidence or expected effect
+- an eval or approval decision before promotion
+
+That makes yoyo’s project growth inspectable instead of magical.
