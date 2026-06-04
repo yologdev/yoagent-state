@@ -58,6 +58,14 @@ yoyo evolve improves.
 
 ## Start in 60 seconds
 
+Add the crate:
+
+```bash
+cargo add yoagent-state
+```
+
+Run the demo from a local clone:
+
 ```bash
 git clone https://github.com/yologdev/yoagent-state.git
 cd yoagent-state
