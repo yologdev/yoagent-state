@@ -2,8 +2,8 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 use yoagent_state::{
-    init_agent_repo, ActorRef, EvalResult, EvalStatus, EventStore, GitEventStore, Goal, GoalId,
-    NodeId, YoAgentState,
+    init_agent_repo, ActorRef, EventStore, GitEventStore, Goal, GoalId, NodeId, RunId,
+    YoAgentState,
 };
 
 fn git_env(dir: &Path, args: &[&str]) -> String {
@@ -11,10 +11,6 @@ fn git_env(dir: &Path, args: &[&str]) -> String {
         .arg("-C")
         .arg(dir)
         .args(args)
-        .env("GIT_AUTHOR_NAME", "t")
-        .env("GIT_AUTHOR_EMAIL", "t@t")
-        .env("GIT_COMMITTER_NAME", "t")
-        .env("GIT_COMMITTER_EMAIL", "t@t")
         .output()
         .unwrap();
     assert!(
@@ -25,13 +21,20 @@ fn git_env(dir: &Path, args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
+/// Commit the scaffold first so boundary commits contain only the events log
+/// (the append-only prefix check relies on this). Sets repo-local git identity
+/// because commit_run's internal git uses ambient config.
 fn setup(dir: &Path) -> GitEventStore {
     let store = init_agent_repo(dir, "test-agent", "worker-a").unwrap();
-    // commit_run needs an identity for the boundary commit to be meaningful,
-    // and git needs a configured author.
+    git_env(dir, &["config", "user.name", "t"]);
+    git_env(dir, &["config", "user.email", "t@t"]);
     git_env(dir, &["add", "-A"]);
     git_env(dir, &["commit", "-qm", "init agent repo"]);
     store
+}
+
+fn goal(id: &str) -> Goal {
+    Goal::new(GoalId::new(id), "title", "summary", ActorRef::agent("t"))
 }
 
 #[tokio::test]
@@ -40,11 +43,7 @@ async fn durable_append_survives_without_commit() {
     let store = setup(dir.path());
 
     let state = YoAgentState::load(store).await.unwrap();
-    let actor = ActorRef::agent("t");
-    state
-        .record_goal(Goal::new(GoalId::new("goal_x"), "title", "sum", actor))
-        .await
-        .unwrap();
+    state.record_goal(goal("goal_x")).await.unwrap();
     drop(state); // "crash": no commit, no release
 
     // A fresh load from the same repo sees the fsynced tail.
@@ -56,42 +55,22 @@ async fn durable_append_survives_without_commit() {
 }
 
 #[tokio::test]
-async fn pairing_rule_causation_is_threaded() {
+async fn torn_final_line_yields_actionable_error() {
     let dir = tempfile::tempdir().unwrap();
     let store = setup(dir.path());
     let state = YoAgentState::load(store).await.unwrap();
-    let actor = ActorRef::agent("t");
-    state
-        .record_goal(Goal::new(GoalId::new("goal_x"), "title", "sum", actor.clone()))
-        .await
-        .unwrap();
-    state
-        .record_eval(
-            actor,
-            EvalResult {
-                id: yoagent_state::EvalId::new("eval_x"),
-                command: "cargo test".into(),
-                status: EvalStatus::Passed,
-                score: Some(1.0),
-                metadata: serde_json::json!({}),
-            },
-            None,
-        )
-        .await
-        .unwrap();
+    state.record_goal(goal("goal_x")).await.unwrap();
 
-    let events = state.store().scan().await.unwrap();
-    assert_eq!(events.len(), 4);
-    for pair in events.chunks(2) {
-        let (domain, ops) = (&pair[0], &pair[1]);
-        assert_eq!(ops.kind, "state.ops_applied");
-        assert_eq!(
-            ops.causation_id.as_ref(),
-            Some(&domain.id),
-            "ops event must be caused by its domain event ({})",
-            domain.kind
-        );
-    }
+    // simulate a crash mid-write: a truncated final JSON line
+    let log = dir.path().join("state/events.jsonl");
+    let mut content = std::fs::read_to_string(&log).unwrap();
+    content.push_str("{\"id\":\"event_torn");
+    std::fs::write(&log, content).unwrap();
+
+    let store = GitEventStore::open(dir.path(), "worker-a").unwrap();
+    let err = store.scan().await.unwrap_err().to_string();
+    assert!(err.contains("torn final line"), "unhelpful error: {err}");
+    assert!(err.contains("events.jsonl:3"), "missing location: {err}");
 }
 
 #[tokio::test]
@@ -104,13 +83,10 @@ async fn second_writer_is_refused_until_release() {
 
     let state_a = YoAgentState::load(store_a.clone()).await.unwrap();
     let actor = ActorRef::agent("t");
-    state_a
-        .record_goal(Goal::new(GoalId::new("goal_a"), "a", "a", actor.clone()))
-        .await
-        .unwrap();
+    state_a.record_goal(goal("goal_a")).await.unwrap();
+    let len_before = store_a.scan().await.unwrap().len();
 
-    // worker-b must not be able to append while worker-a holds the lease
-    let err = state_a; // keep state alive; try b directly at store level
+    // worker-b must not append while worker-a holds the lease...
     let refused = store_b
         .append(vec![yoagent_state::Event::new(
             actor.clone(),
@@ -119,17 +95,70 @@ async fn second_writer_is_refused_until_release() {
         )])
         .await;
     assert!(refused.is_err(), "second writer slipped past the lease");
-    drop(err);
+    // ...and a refused writer must not have written anything
+    assert_eq!(store_a.scan().await.unwrap().len(), len_before);
+
+    // a non-holder's release must not evict the holder
+    store_b.release_lease().unwrap();
+    assert!(store_b
+        .append(vec![yoagent_state::Event::new(
+            actor.clone(),
+            "goal.created",
+            serde_json::json!({"id": "goal_b"}),
+        )])
+        .await
+        .is_err());
 
     store_a.release_lease().unwrap();
-    let allowed = store_b
+    assert!(store_b
         .append(vec![yoagent_state::Event::new(
             actor,
             "goal.created",
             serde_json::json!({"id": "goal_b"}),
         )])
-        .await;
-    assert!(allowed.is_ok(), "released lease should be takeable");
+        .await
+        .is_ok());
+}
+
+#[tokio::test]
+async fn expired_lease_is_taken_over() {
+    let dir = tempfile::tempdir().unwrap();
+    let store_a = setup(dir.path()).with_lease_ttl(Duration::from_millis(50));
+    let store_b = GitEventStore::open(dir.path(), "worker-b").unwrap();
+    let actor = ActorRef::agent("t");
+    let event = || yoagent_state::Event::new(actor.clone(), "goal.created", serde_json::json!({}));
+
+    store_a.append(vec![event()]).await.unwrap();
+    assert!(store_b.append(vec![event()]).await.is_err(), "lease live");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        store_b.append(vec![event()]).await.is_ok(),
+        "expired lease must be takeable"
+    );
+    // and after the takeover, the original holder is now the refused one
+    assert!(store_a.append(vec![event()]).await.is_err());
+}
+
+#[tokio::test]
+async fn corrupt_lease_refuses_instead_of_stealing() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = setup(dir.path());
+    std::fs::write(dir.path().join(".agent/lease"), "not json").unwrap();
+
+    let actor = ActorRef::agent("t");
+    let err = store
+        .append(vec![yoagent_state::Event::new(
+            actor,
+            "goal.created",
+            serde_json::json!({}),
+        )])
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("corrupt"), "expected corrupt-lease refusal: {err}");
+    // release reports the same problem instead of silently stranding it
+    assert!(store.release_lease().is_err());
 }
 
 #[tokio::test]
@@ -137,29 +166,25 @@ async fn boundary_commit_carries_trailers_and_is_append_only() {
     let dir = tempfile::tempdir().unwrap();
     let store = setup(dir.path());
     let state = YoAgentState::load(store.clone()).await.unwrap();
-    let actor = ActorRef::agent("t");
 
-    state
-        .record_goal(Goal::new(GoalId::new("goal_x"), "t", "s", actor.clone()))
-        .await
-        .unwrap();
+    state.record_goal(goal("goal_x")).await.unwrap();
     let first = store
-        .commit_run("run_1", "goal_x", "promoted", &[])
+        .commit_run(&RunId::new("run_1"), &GoalId::new("goal_x"), "promoted", &[])
         .unwrap()
         .expect("first run commits");
 
-    state
-        .record_goal(Goal::new(GoalId::new("goal_y"), "t", "s", actor))
-        .await
-        .unwrap();
+    state.record_goal(goal("goal_y")).await.unwrap();
     let second = store
-        .commit_run("run_2", "goal_y", "rejected", &[])
+        .commit_run(&RunId::new("run_2"), &GoalId::new("goal_y"), "rejected", &[])
         .unwrap()
         .expect("second run commits");
     assert_ne!(first, second);
 
     // nothing new -> no empty commit
-    assert!(store.commit_run("run_3", "-", "-", &[]).unwrap().is_none());
+    assert!(store
+        .commit_run(&RunId::new("run_3"), &GoalId::new("-"), "-", &[])
+        .unwrap()
+        .is_none());
 
     let message = git_env(dir.path(), &["log", "-1", "--format=%B", &first]);
     assert!(message.contains("Run-Id: run_1"));
@@ -174,4 +199,35 @@ async fn boundary_commit_carries_trailers_and_is_append_only() {
     // the lease never ships: .gitignore covers it and git sees it as ignored
     let ignored = git_env(dir.path(), &["check-ignore", ".agent/lease"]);
     assert_eq!(ignored, ".agent/lease");
+}
+
+#[tokio::test]
+async fn commit_run_ignores_unrelated_dirty_and_staged_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = setup(dir.path());
+    let state = YoAgentState::load(store.clone()).await.unwrap();
+
+    // idle run + unrelated dirty tracked file -> Ok(None), not Err
+    std::fs::write(dir.path().join("AGENT.md"), "# AGENT (edited mid-work)\n").unwrap();
+    assert!(store
+        .commit_run(&RunId::new("run_1"), &GoalId::new("g"), "idle", &[])
+        .unwrap()
+        .is_none());
+
+    // a real run commits ONLY the requested paths: neither the dirty file nor
+    // externally staged content gets swept into the boundary commit
+    std::fs::write(dir.path().join("unrelated.txt"), "staged by a human\n").unwrap();
+    git_env(dir.path(), &["add", "unrelated.txt"]);
+    state.record_goal(goal("goal_x")).await.unwrap();
+    let sha = store
+        .commit_run(&RunId::new("run_2"), &GoalId::new("goal_x"), "promoted", &[])
+        .unwrap()
+        .expect("run with new events commits");
+    let files = git_env(dir.path(), &["show", "--name-only", "--format=", &sha]);
+    assert_eq!(files.trim(), "state/events.jsonl", "swept in: {files}");
+
+    // trailer forgery is rejected
+    assert!(store
+        .commit_run(&RunId::new("run_3"), &GoalId::new("g"), "done\nOutcome: forged", &[])
+        .is_err());
 }

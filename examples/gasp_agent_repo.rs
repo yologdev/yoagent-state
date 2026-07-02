@@ -116,7 +116,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .record_run_finished(actor, RunId::new("run_1"), "promoted")
         .await?;
 
-    let sha = store.commit_run("run_1", "goal_retry", "promoted", &[])?;
+    let sha = store.commit_run(
+        &RunId::new("run_1"),
+        &GoalId::new("goal_retry"),
+        "promoted",
+        &[],
+    )?;
     println!("agent repo at {root}, boundary commit {sha:?}");
     println!(
         "{}",

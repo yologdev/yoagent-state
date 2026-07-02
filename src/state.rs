@@ -13,7 +13,13 @@ use tokio::sync::RwLock;
 pub struct YoAgentState<S: EventStore> {
     store: Arc<S>,
     graph: Arc<RwLock<Graph>>,
-    current_run: Arc<RwLock<Option<EventId>>>,
+    /// The open run, if any: its `RunId` and its `run.started` event id.
+    /// Shared across clones — at most one run may be open per state handle
+    /// and all its clones (enforced by `record_run_started` /
+    /// `record_run_finished`). In-memory only: `load` does not recover an
+    /// open run from the log, so a process restarted mid-run must start a
+    /// new run before recording chained events.
+    current_run: Arc<RwLock<Option<(RunId, EventId)>>>,
 }
 
 impl<S: EventStore> Clone for YoAgentState<S> {
@@ -43,11 +49,14 @@ impl<S: EventStore> YoAgentState<S> {
 
     /// Append one event. Events recorded without an explicit `causation_id`
     /// while a run is open (between `record_run_started` and
-    /// `record_run_finished`) are chained to the run's start event, so the
-    /// log's causation graph roots only at `*.created` / `*.started`.
+    /// `record_run_finished`) are chained to the run's start event. Provided
+    /// all activity happens inside runs within a single process lifetime,
+    /// this keeps the causation graph rooted at `*.created` / `*.started` —
+    /// events recorded with no open run become roots of whatever kind they
+    /// are, and the open-run marker is not recovered by `load`.
     pub async fn record_event(&self, mut event: Event) -> Result<EventId, StateError> {
         if event.causation_id.is_none() && event.kind != "run.started" {
-            if let Some(run_event) = self.current_run.read().await.clone() {
+            if let Some((_, run_event)) = self.current_run.read().await.clone() {
                 event.causation_id = Some(run_event);
             }
         }
@@ -240,6 +249,11 @@ impl<S: EventStore> YoAgentState<S> {
         run_id: RunId,
         task: impl Into<String>,
     ) -> Result<EventId, StateError> {
+        if let Some((open_run, _)) = self.current_run.read().await.as_ref() {
+            return Err(StateError::Validation(format!(
+                "run {open_run} is already open; finish it before starting {run_id}"
+            )));
+        }
         let task = task.into();
         let caused_by = self
             .record_event(Event::new(
@@ -248,17 +262,21 @@ impl<S: EventStore> YoAgentState<S> {
                 json!({ "run_id": run_id, "task": task }),
             ))
             .await?;
-        *self.current_run.write().await = Some(caused_by.clone());
-        self.apply_ops_caused_by(
-            actor,
-            vec![StateOp::CreateNode {
-                id: NodeId::new(run_id.0),
-                kind: crate::KIND_RUN.to_string(),
-                props: json!({ "task": task, "status": "started" }),
-            }],
-            Some(caused_by),
-        )
-        .await
+        let result = self
+            .apply_ops_caused_by(
+                actor,
+                vec![StateOp::CreateNode {
+                    id: NodeId::new(run_id.0.clone()),
+                    kind: crate::KIND_RUN.to_string(),
+                    props: json!({ "task": task, "status": "started" }),
+                }],
+                Some(caused_by.clone()),
+            )
+            .await?;
+        // Only a fully-recorded run (domain event + ops pair) opens chaining;
+        // a failed ops append must not leave events chaining to a phantom run.
+        *self.current_run.write().await = Some((run_id, caused_by));
+        Ok(result)
     }
 
     pub async fn record_run_finished(
@@ -267,6 +285,19 @@ impl<S: EventStore> YoAgentState<S> {
         run_id: RunId,
         outcome: impl Into<String>,
     ) -> Result<EventId, StateError> {
+        match self.current_run.read().await.as_ref() {
+            Some((open_run, _)) if *open_run == run_id => {}
+            Some((open_run, _)) => {
+                return Err(StateError::Validation(format!(
+                    "cannot finish {run_id}: the open run is {open_run}"
+                )));
+            }
+            None => {
+                return Err(StateError::Validation(format!(
+                    "cannot finish {run_id}: no run is open"
+                )));
+            }
+        }
         let event_id = self
             .record_event(Event::new(
                 actor,
