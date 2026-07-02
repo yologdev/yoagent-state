@@ -2,8 +2,7 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 use yoagent_state::{
-    init_agent_repo, ActorRef, EventStore, GitEventStore, Goal, GoalId, NodeId, RunId,
-    YoAgentState,
+    ActorRef, EventStore, GitEventStore, Goal, GoalId, NodeId, RunId, YoAgentState, init_agent_repo,
 };
 
 fn git_env(dir: &Path, args: &[&str]) -> String {
@@ -100,24 +99,28 @@ async fn second_writer_is_refused_until_release() {
 
     // a non-holder's release must not evict the holder
     store_b.release_lease().unwrap();
-    assert!(store_b
-        .append(vec![yoagent_state::Event::new(
-            actor.clone(),
-            "goal.created",
-            serde_json::json!({"id": "goal_b"}),
-        )])
-        .await
-        .is_err());
+    assert!(
+        store_b
+            .append(vec![yoagent_state::Event::new(
+                actor.clone(),
+                "goal.created",
+                serde_json::json!({"id": "goal_b"}),
+            )])
+            .await
+            .is_err()
+    );
 
     store_a.release_lease().unwrap();
-    assert!(store_b
-        .append(vec![yoagent_state::Event::new(
-            actor,
-            "goal.created",
-            serde_json::json!({"id": "goal_b"}),
-        )])
-        .await
-        .is_ok());
+    assert!(
+        store_b
+            .append(vec![yoagent_state::Event::new(
+                actor,
+                "goal.created",
+                serde_json::json!({"id": "goal_b"}),
+            )])
+            .await
+            .is_ok()
+    );
 }
 
 #[tokio::test]
@@ -156,7 +159,10 @@ async fn corrupt_lease_refuses_instead_of_stealing() {
         .await
         .unwrap_err()
         .to_string();
-    assert!(err.contains("corrupt"), "expected corrupt-lease refusal: {err}");
+    assert!(
+        err.contains("corrupt"),
+        "expected corrupt-lease refusal: {err}"
+    );
     // release reports the same problem instead of silently stranding it
     assert!(store.release_lease().is_err());
 }
@@ -169,22 +175,34 @@ async fn boundary_commit_carries_trailers_and_is_append_only() {
 
     state.record_goal(goal("goal_x")).await.unwrap();
     let first = store
-        .commit_run(&RunId::new("run_1"), &GoalId::new("goal_x"), "promoted", &[])
+        .commit_run(
+            &RunId::new("run_1"),
+            &GoalId::new("goal_x"),
+            "promoted",
+            &[],
+        )
         .unwrap()
         .expect("first run commits");
 
     state.record_goal(goal("goal_y")).await.unwrap();
     let second = store
-        .commit_run(&RunId::new("run_2"), &GoalId::new("goal_y"), "rejected", &[])
+        .commit_run(
+            &RunId::new("run_2"),
+            &GoalId::new("goal_y"),
+            "rejected",
+            &[],
+        )
         .unwrap()
         .expect("second run commits");
     assert_ne!(first, second);
 
     // nothing new -> no empty commit
-    assert!(store
-        .commit_run(&RunId::new("run_3"), &GoalId::new("-"), "-", &[])
-        .unwrap()
-        .is_none());
+    assert!(
+        store
+            .commit_run(&RunId::new("run_3"), &GoalId::new("-"), "-", &[])
+            .unwrap()
+            .is_none()
+    );
 
     let message = git_env(dir.path(), &["log", "-1", "--format=%B", &first]);
     assert!(message.contains("Run-Id: run_1"));
@@ -192,8 +210,14 @@ async fn boundary_commit_carries_trailers_and_is_append_only() {
     assert!(message.contains("Outcome: promoted"));
 
     // append-only across the two commits: v1 is a prefix of v2
-    let v1 = git_env(dir.path(), &["show", &format!("{first}:state/events.jsonl")]);
-    let v2 = git_env(dir.path(), &["show", &format!("{second}:state/events.jsonl")]);
+    let v1 = git_env(
+        dir.path(),
+        &["show", &format!("{first}:state/events.jsonl")],
+    );
+    let v2 = git_env(
+        dir.path(),
+        &["show", &format!("{second}:state/events.jsonl")],
+    );
     assert!(v2.starts_with(&v1), "boundary commits must be append-only");
 
     // the lease never ships: .gitignore covers it and git sees it as ignored
@@ -209,10 +233,12 @@ async fn commit_run_ignores_unrelated_dirty_and_staged_files() {
 
     // idle run + unrelated dirty tracked file -> Ok(None), not Err
     std::fs::write(dir.path().join("AGENT.md"), "# AGENT (edited mid-work)\n").unwrap();
-    assert!(store
-        .commit_run(&RunId::new("run_1"), &GoalId::new("g"), "idle", &[])
-        .unwrap()
-        .is_none());
+    assert!(
+        store
+            .commit_run(&RunId::new("run_1"), &GoalId::new("g"), "idle", &[])
+            .unwrap()
+            .is_none()
+    );
 
     // a real run commits ONLY the requested paths: neither the dirty file nor
     // externally staged content gets swept into the boundary commit
@@ -220,14 +246,26 @@ async fn commit_run_ignores_unrelated_dirty_and_staged_files() {
     git_env(dir.path(), &["add", "unrelated.txt"]);
     state.record_goal(goal("goal_x")).await.unwrap();
     let sha = store
-        .commit_run(&RunId::new("run_2"), &GoalId::new("goal_x"), "promoted", &[])
+        .commit_run(
+            &RunId::new("run_2"),
+            &GoalId::new("goal_x"),
+            "promoted",
+            &[],
+        )
         .unwrap()
         .expect("run with new events commits");
     let files = git_env(dir.path(), &["show", "--name-only", "--format=", &sha]);
     assert_eq!(files.trim(), "state/events.jsonl", "swept in: {files}");
 
     // trailer forgery is rejected
-    assert!(store
-        .commit_run(&RunId::new("run_3"), &GoalId::new("g"), "done\nOutcome: forged", &[])
-        .is_err());
+    assert!(
+        store
+            .commit_run(
+                &RunId::new("run_3"),
+                &GoalId::new("g"),
+                "done\nOutcome: forged",
+                &[]
+            )
+            .is_err()
+    );
 }

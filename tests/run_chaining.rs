@@ -41,9 +41,12 @@ async fn events_inside_a_run_chain_to_run_started() {
     let goal_created = events.iter().find(|e| e.kind == "goal.created").unwrap();
     assert_eq!(goal_created.causation_id.as_ref(), Some(&run_started_id));
 
-    // an explicit causation_id is never overwritten
+    // an explicit causation_id is never overwritten; an explicit
+    // correlation_id is never overwritten either (causation still auto-chains
+    // when only correlation is explicit)
     let explicit = Event::new(actor(), "observation.created", json!({"id": "o1"}))
-        .with_causation(goal_created.id.clone());
+        .with_causation(goal_created.id.clone())
+        .with_correlation("other_saga");
     let goal_created_id = goal_created.id.clone();
     state.record_event(explicit).await.unwrap();
     let events = state.store().scan().await.unwrap();
@@ -52,6 +55,10 @@ async fn events_inside_a_run_chain_to_run_started() {
         .find(|e| e.kind == "observation.created")
         .unwrap();
     assert_eq!(obs.causation_id.as_ref(), Some(&goal_created_id));
+    assert_eq!(obs.correlation_id.as_deref(), Some("other_saga"));
+
+    // implicit events inside the run pick up the run correlation
+    assert_eq!(goal_created.correlation_id.as_deref(), Some("run_1"));
 
     // run.finished itself chains to run.started, and clears the slot
     state
@@ -62,7 +69,7 @@ async fn events_inside_a_run_chain_to_run_started() {
     let finished = events.iter().find(|e| e.kind == "run.finished").unwrap();
     assert_eq!(finished.causation_id.as_ref(), Some(&run_started_id));
 
-    // after the run, unattributed events are roots again
+    // after the run, unattributed events are roots again with no correlation
     state
         .record_goal(Goal::new(GoalId::new("g2"), "t", "s", actor()))
         .await
@@ -74,6 +81,41 @@ async fn events_inside_a_run_chain_to_run_started() {
         .last()
         .unwrap();
     assert_eq!(after.causation_id, None);
+    assert_eq!(after.correlation_id, None);
+}
+
+#[tokio::test]
+async fn run_finished_pairs_and_closes_the_run_node() {
+    let state = fresh().await;
+    state
+        .record_run_started(actor(), RunId::new("run_1"), "task")
+        .await
+        .unwrap();
+    state
+        .record_run_finished(actor(), RunId::new("run_1"), "promoted")
+        .await
+        .unwrap();
+
+    // the finish has an ops pair (not pinned by the >=15 lower bound elsewhere)
+    let events = state.store().scan().await.unwrap();
+    let finished = events.iter().find(|e| e.kind == "run.finished").unwrap();
+    assert!(
+        events.iter().any(|e| e.kind == "state.ops_applied"
+            && e.causation_id.as_ref() == Some(&finished.id)),
+        "run.finished must have a paired ops event"
+    );
+    // and its ops pair carries the run correlation (the set-before-pair order)
+    let started = events.iter().find(|e| e.kind == "run.started").unwrap();
+    let started_pair = events
+        .iter()
+        .find(|e| e.kind == "state.ops_applied" && e.causation_id.as_ref() == Some(&started.id))
+        .unwrap();
+    assert_eq!(started_pair.correlation_id.as_deref(), Some("run_1"));
+
+    // folded node is closed
+    let node = state.get_node(NodeId::new("run_1")).await.unwrap();
+    assert_eq!(node.props["status"], json!("finished"));
+    assert_eq!(node.props["outcome"], json!("promoted"));
 }
 
 #[tokio::test]
@@ -267,10 +309,7 @@ async fn every_helper_pairs_ops_with_a_domain_event() {
         .await
         .unwrap();
     state
-        .attach_artifact(
-            NodeId::new("p1"),
-            ArtifactRef::new("git-commit", "abc1234"),
-        )
+        .attach_artifact(NodeId::new("p1"), ArtifactRef::new("git-commit", "abc1234"))
         .await
         .unwrap();
     state
@@ -298,5 +337,8 @@ async fn every_helper_pairs_ops_with_a_domain_event() {
             "ops event at index {i} chained to another ops event"
         );
     }
-    assert!(ops_count >= 15, "expected ops from every helper, saw {ops_count}");
+    assert!(
+        ops_count >= 15,
+        "expected ops from every helper, saw {ops_count}"
+    );
 }

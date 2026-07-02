@@ -9,9 +9,8 @@
 
 use std::process::Command;
 use yoagent_state::{
-    init_agent_repo, ActorRef, Decision, DecisionId, DecisionStatus, EvalId, EvalResult,
-    EvalStatus, Goal, GoalId, NodeId, PatchId, PatchStatus, RunId, StatePatch, ToolCall,
-    YoAgentState,
+    ActorRef, Decision, DecisionId, DecisionStatus, EvalId, EvalResult, EvalStatus, Goal, GoalId,
+    NodeId, PatchId, PatchStatus, RunId, StatePatch, ToolCall, YoAgentState, init_agent_repo,
 };
 
 #[tokio::main]
@@ -22,13 +21,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let store = init_agent_repo(&root, "demo-agent", "worker-demo")?;
     let git = |args: &[&str]| {
-        assert!(Command::new("git")
-            .arg("-C")
-            .arg(&root)
-            .args(args)
-            .status()
-            .unwrap()
-            .success());
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
     };
     git(&["add", "-A"]);
     git(&["commit", "-qm", "init demo agent repo"]);

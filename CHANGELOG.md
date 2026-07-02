@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.4.0 — 2026-07-03
+
+Conformance follow-ups: the sink adapter now emits GASP-conformant logs, runs
+close in the folded graph, and events carry run correlation.
+
+### Changed (breaking)
+
+- **`YoAgentStateAdapter` routes callbacks through the paired helpers.**
+  `on_run_started`/`on_run_finished` now enforce run-transition validation
+  (double-start, finish-with-no-open-run, mismatched run id →
+  `StateError::Validation`; previously they always succeeded).
+- **Adapter event payloads changed shape.** `failure.observed` (from a failed
+  `on_tool_finished`) is now the paired `{id, failure_id, title, summary}`
+  instead of `{run_id, tool, output_summary}`; `model.called`/`tool.called`
+  are now full `ModelCall`/`ToolCall` entities (generated node `id`,
+  `output_summary: null`, `metadata`) and create graph nodes with
+  `produced_by` relations. The run structs' `metadata` fields are currently
+  not persisted by the paired helpers.
+- **`record_run_finished` returns the paired `state.ops_applied` event id**,
+  not the `run.finished` domain event id (consistent with
+  `record_run_started`).
+
+### Changed (log/graph shape)
+
+- `run.finished` gains a paired ops event: the folded run node transitions to
+  `status: "finished"` with an `outcome` prop, instead of staying `"started"`
+  forever.
+- `correlation_id` is populated with the run id on `run.started` and on every
+  event recorded while a run is open (explicit correlations are never
+  overwritten; events outside runs stay uncorrelated).
+- `record_run_started` opens the run marker before appending the ops pair (so
+  the pair carries the run correlation), rolling the marker back if the ops
+  append fails; a failed `record_run_finished` leaves the run open for retry
+  (a retry appends a fresh `run.finished` domain event).
+
 ## 0.3.0 — 2026-07-02
 
 GASP store contract release: `yoagent-state` can now persist agent state as a

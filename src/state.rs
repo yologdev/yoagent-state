@@ -49,15 +49,22 @@ impl<S: EventStore> YoAgentState<S> {
 
     /// Append one event. Events recorded without an explicit `causation_id`
     /// while a run is open (between `record_run_started` and
-    /// `record_run_finished`) are chained to the run's start event. Provided
-    /// all activity happens inside runs within a single process lifetime,
-    /// this keeps the causation graph rooted at `*.created` / `*.started` —
-    /// events recorded with no open run become roots of whatever kind they
-    /// are, and the open-run marker is not recovered by `load`.
+    /// `record_run_finished`) are chained to the run's start event, and
+    /// events without an explicit `correlation_id` are correlated to the
+    /// run's id. Provided all activity happens inside runs within a single
+    /// process lifetime, this keeps the causation graph rooted at
+    /// `*.created` / `*.started` — events recorded with no open run become
+    /// roots of whatever kind they are and carry no run correlation, and the
+    /// open-run marker is not recovered by `load`.
     pub async fn record_event(&self, mut event: Event) -> Result<EventId, StateError> {
-        if event.causation_id.is_none() && event.kind != "run.started" {
-            if let Some((_, run_event)) = self.current_run.read().await.clone() {
-                event.causation_id = Some(run_event);
+        if event.causation_id.is_none() || event.correlation_id.is_none() {
+            if let Some((run_id, run_event)) = self.current_run.read().await.clone() {
+                if event.causation_id.is_none() && event.kind != "run.started" {
+                    event.causation_id = Some(run_event);
+                }
+                if event.correlation_id.is_none() {
+                    event.correlation_id = Some(run_id.0);
+                }
             }
         }
         let ids = self.store.append(vec![event.clone()]).await?;
@@ -134,7 +141,8 @@ impl<S: EventStore> YoAgentState<S> {
         }
 
         ops.extend(patch.ops);
-        self.apply_ops_caused_by(actor, ops, Some(caused_by)).await?;
+        self.apply_ops_caused_by(actor, ops, Some(caused_by))
+            .await?;
         Ok(patch_id)
     }
 
@@ -256,27 +264,37 @@ impl<S: EventStore> YoAgentState<S> {
         }
         let task = task.into();
         let caused_by = self
-            .record_event(Event::new(
-                actor.clone(),
-                "run.started",
-                json!({ "run_id": run_id, "task": task }),
-            ))
+            .record_event(
+                Event::new(
+                    actor.clone(),
+                    "run.started",
+                    json!({ "run_id": run_id, "task": task }),
+                )
+                .with_correlation(run_id.0.clone()),
+            )
             .await?;
+        // Open the run before the ops pair so the pair itself picks up the
+        // run correlation. On ops failure, roll back the open-run MARKER only
+        // (the run.started event stays in the log as a valid unpaired root)
+        // so later events don't chain or correlate to a run whose node was
+        // never created. Clones recording concurrently in this narrow window
+        // may still chain to it — benign: the cited event exists in the log.
+        *self.current_run.write().await = Some((run_id.clone(), caused_by.clone()));
         let result = self
             .apply_ops_caused_by(
                 actor,
                 vec![StateOp::CreateNode {
-                    id: NodeId::new(run_id.0.clone()),
+                    id: NodeId::new(run_id.0),
                     kind: crate::KIND_RUN.to_string(),
                     props: json!({ "task": task, "status": "started" }),
                 }],
-                Some(caused_by.clone()),
+                Some(caused_by),
             )
-            .await?;
-        // Only a fully-recorded run (domain event + ops pair) opens chaining;
-        // a failed ops append must not leave events chaining to a phantom run.
-        *self.current_run.write().await = Some((run_id, caused_by));
-        Ok(result)
+            .await;
+        if result.is_err() {
+            *self.current_run.write().await = None;
+        }
+        result
     }
 
     pub async fn record_run_finished(
@@ -298,12 +316,27 @@ impl<S: EventStore> YoAgentState<S> {
                 )));
             }
         }
-        let event_id = self
+        let outcome = outcome.into();
+        // On failure the open-run marker stays set, so finish can be retried;
+        // a retry appends a fresh run.finished domain event (the earlier one
+        // remains in the append-only log, unpaired).
+        let caused_by = self
             .record_event(Event::new(
-                actor,
+                actor.clone(),
                 "run.finished",
-                json!({ "run_id": run_id, "outcome": outcome.into() }),
+                json!({ "run_id": run_id, "outcome": outcome }),
             ))
+            .await?;
+        // Pair the finish so the folded run node doesn't stay "started" forever.
+        let event_id = self
+            .apply_ops_caused_by(
+                actor,
+                vec![StateOp::UpdateNode {
+                    id: NodeId::new(run_id.0.clone()),
+                    props: json!({ "status": "finished", "outcome": outcome }),
+                }],
+                Some(caused_by),
+            )
             .await?;
         *self.current_run.write().await = None;
         Ok(event_id)
