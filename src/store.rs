@@ -231,7 +231,7 @@ impl IndexStore for JsonlEventStore {
     }
 }
 
-fn scan_after_events(
+pub(crate) fn scan_after_events(
     events: Vec<Event>,
     event_id: Option<EventId>,
 ) -> Result<Vec<Event>, StateError> {

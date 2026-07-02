@@ -13,6 +13,13 @@ use tokio::sync::RwLock;
 pub struct YoAgentState<S: EventStore> {
     store: Arc<S>,
     graph: Arc<RwLock<Graph>>,
+    /// The open run, if any: its `RunId` and its `run.started` event id.
+    /// Shared across clones — at most one run may be open per state handle
+    /// and all its clones (enforced by `record_run_started` /
+    /// `record_run_finished`). In-memory only: `load` does not recover an
+    /// open run from the log, so a process restarted mid-run must start a
+    /// new run before recording chained events.
+    current_run: Arc<RwLock<Option<(RunId, EventId)>>>,
 }
 
 impl<S: EventStore> Clone for YoAgentState<S> {
@@ -20,6 +27,7 @@ impl<S: EventStore> Clone for YoAgentState<S> {
         Self {
             store: self.store.clone(),
             graph: self.graph.clone(),
+            current_run: self.current_run.clone(),
         }
     }
 }
@@ -31,6 +39,7 @@ impl<S: EventStore> YoAgentState<S> {
         Ok(Self {
             store: Arc::new(store),
             graph: Arc::new(RwLock::new(graph)),
+            current_run: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -38,7 +47,19 @@ impl<S: EventStore> YoAgentState<S> {
         self.store.clone()
     }
 
-    pub async fn record_event(&self, event: Event) -> Result<EventId, StateError> {
+    /// Append one event. Events recorded without an explicit `causation_id`
+    /// while a run is open (between `record_run_started` and
+    /// `record_run_finished`) are chained to the run's start event. Provided
+    /// all activity happens inside runs within a single process lifetime,
+    /// this keeps the causation graph rooted at `*.created` / `*.started` —
+    /// events recorded with no open run become roots of whatever kind they
+    /// are, and the open-run marker is not recovered by `load`.
+    pub async fn record_event(&self, mut event: Event) -> Result<EventId, StateError> {
+        if event.causation_id.is_none() && event.kind != "run.started" {
+            if let Some((_, run_event)) = self.current_run.read().await.clone() {
+                event.causation_id = Some(run_event);
+            }
+        }
         let ids = self.store.append(vec![event.clone()]).await?;
         {
             let mut graph = self.graph.write().await;
@@ -52,19 +73,34 @@ impl<S: EventStore> YoAgentState<S> {
         actor: ActorRef,
         ops: Vec<StateOp>,
     ) -> Result<EventId, StateError> {
-        let event = Event::new(actor, crate::STATE_OPS_APPLIED, serde_json::to_value(ops)?);
+        self.apply_ops_caused_by(actor, ops, None).await
+    }
+
+    /// Append a `state.ops_applied` event carrying the domain event that caused
+    /// it, per the GASP pairing rule: ops that materialize a domain event set
+    /// `causation_id` to that event's id, keeping the audit layer and the
+    /// folded graph mechanically linked.
+    pub async fn apply_ops_caused_by(
+        &self,
+        actor: ActorRef,
+        ops: Vec<StateOp>,
+        caused_by: Option<EventId>,
+    ) -> Result<EventId, StateError> {
+        let mut event = Event::new(actor, crate::STATE_OPS_APPLIED, serde_json::to_value(ops)?);
+        event.causation_id = caused_by;
         self.record_event(event).await
     }
 
     pub async fn propose_patch(&self, patch: StatePatch) -> Result<PatchId, StateError> {
         let patch_id = patch.id.clone();
         let actor = patch.created_by.clone();
-        self.record_event(Event::new(
-            actor.clone(),
-            "patch.proposed",
-            serde_json::to_value(&patch)?,
-        ))
-        .await?;
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "patch.proposed",
+                serde_json::to_value(&patch)?,
+            ))
+            .await?;
 
         let patch_node_id = NodeId::new(patch.id.0.clone());
         let mut ops = vec![StateOp::CreateNode {
@@ -98,7 +134,7 @@ impl<S: EventStore> YoAgentState<S> {
         }
 
         ops.extend(patch.ops);
-        self.apply_ops(actor, ops).await?;
+        self.apply_ops_caused_by(actor, ops, Some(caused_by)).await?;
         Ok(patch_id)
     }
 
@@ -118,9 +154,9 @@ impl<S: EventStore> YoAgentState<S> {
                 "reason": reason,
             }),
         );
-        self.record_event(event).await?;
+        let caused_by = self.record_event(event).await?;
 
-        self.apply_ops(
+        self.apply_ops_caused_by(
             actor,
             vec![StateOp::UpdateNode {
                 id: NodeId::new(patch_id.0),
@@ -129,6 +165,7 @@ impl<S: EventStore> YoAgentState<S> {
                     "status_reason": reason,
                 }),
             }],
+            Some(caused_by),
         )
         .await
     }
@@ -139,22 +176,24 @@ impl<S: EventStore> YoAgentState<S> {
         artifact: ArtifactRef,
     ) -> Result<EventId, StateError> {
         let actor = ActorRef::system("yoagent-state");
-        self.record_event(Event::new(
-            actor.clone(),
-            "artifact.attached",
-            json!({
-                "node_id": node_id,
-                "artifact": artifact,
-            }),
-        ))
-        .await?;
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "artifact.attached",
+                json!({
+                    "node_id": node_id,
+                    "artifact": artifact,
+                }),
+            ))
+            .await?;
 
-        self.apply_ops(
+        self.apply_ops_caused_by(
             actor,
             vec![StateOp::AttachArtifact {
                 id: node_id,
                 artifact,
             }],
+            Some(caused_by),
         )
         .await
     }
@@ -210,22 +249,34 @@ impl<S: EventStore> YoAgentState<S> {
         run_id: RunId,
         task: impl Into<String>,
     ) -> Result<EventId, StateError> {
+        if let Some((open_run, _)) = self.current_run.read().await.as_ref() {
+            return Err(StateError::Validation(format!(
+                "run {open_run} is already open; finish it before starting {run_id}"
+            )));
+        }
         let task = task.into();
-        self.record_event(Event::new(
-            actor.clone(),
-            "run.started",
-            json!({ "run_id": run_id, "task": task }),
-        ))
-        .await?;
-        self.apply_ops(
-            actor,
-            vec![StateOp::CreateNode {
-                id: NodeId::new(run_id.0),
-                kind: crate::KIND_RUN.to_string(),
-                props: json!({ "task": task, "status": "started" }),
-            }],
-        )
-        .await
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "run.started",
+                json!({ "run_id": run_id, "task": task }),
+            ))
+            .await?;
+        let result = self
+            .apply_ops_caused_by(
+                actor,
+                vec![StateOp::CreateNode {
+                    id: NodeId::new(run_id.0.clone()),
+                    kind: crate::KIND_RUN.to_string(),
+                    props: json!({ "task": task, "status": "started" }),
+                }],
+                Some(caused_by.clone()),
+            )
+            .await?;
+        // Only a fully-recorded run (domain event + ops pair) opens chaining;
+        // a failed ops append must not leave events chaining to a phantom run.
+        *self.current_run.write().await = Some((run_id, caused_by));
+        Ok(result)
     }
 
     pub async fn record_run_finished(
@@ -234,23 +285,40 @@ impl<S: EventStore> YoAgentState<S> {
         run_id: RunId,
         outcome: impl Into<String>,
     ) -> Result<EventId, StateError> {
-        self.record_event(Event::new(
-            actor,
-            "run.finished",
-            json!({ "run_id": run_id, "outcome": outcome.into() }),
-        ))
-        .await
+        match self.current_run.read().await.as_ref() {
+            Some((open_run, _)) if *open_run == run_id => {}
+            Some((open_run, _)) => {
+                return Err(StateError::Validation(format!(
+                    "cannot finish {run_id}: the open run is {open_run}"
+                )));
+            }
+            None => {
+                return Err(StateError::Validation(format!(
+                    "cannot finish {run_id}: no run is open"
+                )));
+            }
+        }
+        let event_id = self
+            .record_event(Event::new(
+                actor,
+                "run.finished",
+                json!({ "run_id": run_id, "outcome": outcome.into() }),
+            ))
+            .await?;
+        *self.current_run.write().await = None;
+        Ok(event_id)
     }
 
     pub async fn record_goal(&self, goal: Goal) -> Result<EventId, StateError> {
         let actor = goal.owner.clone();
-        self.record_event(Event::new(
-            actor.clone(),
-            "goal.created",
-            serde_json::to_value(&goal)?,
-        ))
-        .await?;
-        self.apply_ops(
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "goal.created",
+                serde_json::to_value(&goal)?,
+            ))
+            .await?;
+        self.apply_ops_caused_by(
             actor,
             vec![StateOp::CreateNode {
                 id: NodeId::new(goal.id.0),
@@ -263,6 +331,7 @@ impl<S: EventStore> YoAgentState<S> {
                     "metadata": goal.metadata,
                 }),
             }],
+            Some(caused_by),
         )
         .await
     }
@@ -274,30 +343,33 @@ impl<S: EventStore> YoAgentState<S> {
         reason: Option<String>,
     ) -> Result<EventId, StateError> {
         let actor = ActorRef::system("yoagent-state");
-        self.record_event(Event::new(
-            actor.clone(),
-            "goal.status_changed",
-            json!({ "goal_id": goal_id, "status": status, "reason": reason }),
-        ))
-        .await?;
-        self.apply_ops(
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "goal.status_changed",
+                json!({ "goal_id": goal_id, "status": status, "reason": reason }),
+            ))
+            .await?;
+        self.apply_ops_caused_by(
             actor,
             vec![StateOp::UpdateNode {
                 id: NodeId::new(goal_id.0),
                 props: json!({ "status": status, "status_reason": reason }),
             }],
+            Some(caused_by),
         )
         .await
     }
 
     pub async fn record_task(&self, task: Task) -> Result<EventId, StateError> {
         let actor = task.created_by.clone();
-        self.record_event(Event::new(
-            actor.clone(),
-            "task.created",
-            serde_json::to_value(&task)?,
-        ))
-        .await?;
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "task.created",
+                serde_json::to_value(&task)?,
+            ))
+            .await?;
         let task_id = NodeId::new(task.id.0);
         let mut ops = vec![StateOp::CreateNode {
             id: task_id.clone(),
@@ -317,7 +389,7 @@ impl<S: EventStore> YoAgentState<S> {
                 props: json!({}),
             });
         }
-        self.apply_ops(actor, ops).await
+        self.apply_ops_caused_by(actor, ops, Some(caused_by)).await
     }
 
     pub async fn update_task_status(
@@ -327,18 +399,20 @@ impl<S: EventStore> YoAgentState<S> {
         reason: Option<String>,
     ) -> Result<EventId, StateError> {
         let actor = ActorRef::system("yoagent-state");
-        self.record_event(Event::new(
-            actor.clone(),
-            "task.status_changed",
-            json!({ "task_id": task_id, "status": status, "reason": reason }),
-        ))
-        .await?;
-        self.apply_ops(
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "task.status_changed",
+                json!({ "task_id": task_id, "status": status, "reason": reason }),
+            ))
+            .await?;
+        self.apply_ops_caused_by(
             actor,
             vec![StateOp::UpdateNode {
                 id: NodeId::new(task_id.0),
                 props: json!({ "status": status, "status_reason": reason }),
             }],
+            Some(caused_by),
         )
         .await
     }
@@ -348,12 +422,13 @@ impl<S: EventStore> YoAgentState<S> {
         actor: ActorRef,
         observation: Observation,
     ) -> Result<EventId, StateError> {
-        self.record_event(Event::new(
-            actor.clone(),
-            "observation.created",
-            serde_json::to_value(&observation)?,
-        ))
-        .await?;
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "observation.created",
+                serde_json::to_value(&observation)?,
+            ))
+            .await?;
         let observation_id = NodeId::new(observation.id.0);
         let mut ops = vec![StateOp::CreateNode {
             id: observation_id.clone(),
@@ -367,12 +442,12 @@ impl<S: EventStore> YoAgentState<S> {
         if let Some(run_id) = observation.observed_in {
             ops.push(StateOp::CreateRelation {
                 from: observation_id,
-                rel: "observed_in".to_string(),
+                rel: crate::REL_OBSERVES.to_string(),
                 to: NodeId::new(run_id.0),
                 props: json!({}),
             });
         }
-        self.apply_ops(actor, ops).await
+        self.apply_ops_caused_by(actor, ops, Some(caused_by)).await
     }
 
     pub async fn record_hypothesis(
@@ -381,12 +456,13 @@ impl<S: EventStore> YoAgentState<S> {
         hypothesis: Hypothesis,
         explains: Option<NodeId>,
     ) -> Result<EventId, StateError> {
-        self.record_event(Event::new(
-            actor.clone(),
-            "hypothesis.created",
-            serde_json::to_value(&hypothesis)?,
-        ))
-        .await?;
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "hypothesis.created",
+                serde_json::to_value(&hypothesis)?,
+            ))
+            .await?;
         let hypothesis_id = NodeId::new(hypothesis.id.0);
         let mut ops = vec![StateOp::CreateNode {
             id: hypothesis_id.clone(),
@@ -406,7 +482,7 @@ impl<S: EventStore> YoAgentState<S> {
                 props: json!({}),
             });
         }
-        self.apply_ops(actor, ops).await
+        self.apply_ops_caused_by(actor, ops, Some(caused_by)).await
     }
 
     pub async fn record_failure(
@@ -418,23 +494,26 @@ impl<S: EventStore> YoAgentState<S> {
     ) -> Result<EventId, StateError> {
         let title = title.into();
         let summary = summary.into();
-        self.record_event(Event::new(
-            actor.clone(),
-            "failure.observed",
-            json!({
-                "failure_id": failure_id,
-                "title": title,
-                "summary": summary,
-            }),
-        ))
-        .await?;
-        self.apply_ops(
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "failure.observed",
+                json!({
+                    "id": failure_id,
+                    "failure_id": failure_id,
+                    "title": title,
+                    "summary": summary,
+                }),
+            ))
+            .await?;
+        self.apply_ops_caused_by(
             actor,
             vec![StateOp::CreateNode {
                 id: failure_id,
                 kind: "failure".to_string(),
                 props: json!({ "title": title, "summary": summary }),
             }],
+            Some(caused_by),
         )
         .await
     }
@@ -473,12 +552,13 @@ impl<S: EventStore> YoAgentState<S> {
         eval: EvalResult,
         patch_id: Option<PatchId>,
     ) -> Result<EventId, StateError> {
-        self.record_event(Event::new(
-            actor.clone(),
-            "eval.finished",
-            serde_json::to_value(&eval)?,
-        ))
-        .await?;
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "eval.finished",
+                serde_json::to_value(&eval)?,
+            ))
+            .await?;
         let eval_node_id = NodeId::new(eval.id.0);
         let mut ops = vec![StateOp::CreateNode {
             id: eval_node_id.clone(),
@@ -498,7 +578,7 @@ impl<S: EventStore> YoAgentState<S> {
                 props: json!({}),
             });
         }
-        self.apply_ops(actor, ops).await
+        self.apply_ops_caused_by(actor, ops, Some(caused_by)).await
     }
 
     pub async fn record_decision(
@@ -541,12 +621,13 @@ impl<S: EventStore> YoAgentState<S> {
         decision: Decision,
         target: Option<NodeId>,
     ) -> Result<EventId, StateError> {
-        self.record_event(Event::new(
-            actor.clone(),
-            "decision.created",
-            serde_json::to_value(&decision)?,
-        ))
-        .await?;
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "decision.created",
+                serde_json::to_value(&decision)?,
+            ))
+            .await?;
         let decision_node_id = NodeId::new(decision.id.0);
         let mut ops = vec![StateOp::CreateNode {
             id: decision_node_id.clone(),
@@ -571,7 +652,7 @@ impl<S: EventStore> YoAgentState<S> {
                 props: json!({}),
             });
         }
-        self.apply_ops(actor, ops).await
+        self.apply_ops_caused_by(actor, ops, Some(caused_by)).await
     }
 
     pub async fn record_project_snapshot(
@@ -579,12 +660,13 @@ impl<S: EventStore> YoAgentState<S> {
         actor: ActorRef,
         snapshot: ProjectSnapshot,
     ) -> Result<EventId, StateError> {
-        self.record_event(Event::new(
-            actor.clone(),
-            "project.snapshot_recorded",
-            serde_json::to_value(&snapshot)?,
-        ))
-        .await?;
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "project.snapshot_recorded",
+                serde_json::to_value(&snapshot)?,
+            ))
+            .await?;
         let mut ops = vec![StateOp::CreateNode {
             id: snapshot.id.clone(),
             kind: crate::KIND_PROJECT_SNAPSHOT.to_string(),
@@ -599,7 +681,7 @@ impl<S: EventStore> YoAgentState<S> {
                 artifact,
             });
         }
-        self.apply_ops(actor, ops).await
+        self.apply_ops_caused_by(actor, ops, Some(caused_by)).await
     }
 
     pub async fn record_model_call(
@@ -607,13 +689,14 @@ impl<S: EventStore> YoAgentState<S> {
         actor: ActorRef,
         call: ModelCall,
     ) -> Result<EventId, StateError> {
-        self.record_event(Event::new(
-            actor.clone(),
-            "model.called",
-            serde_json::to_value(&call)?,
-        ))
-        .await?;
-        self.apply_ops(
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "model.called",
+                serde_json::to_value(&call)?,
+            ))
+            .await?;
+        self.apply_ops_caused_by(
             actor,
             vec![
                 StateOp::CreateNode {
@@ -634,6 +717,7 @@ impl<S: EventStore> YoAgentState<S> {
                     props: json!({}),
                 },
             ],
+            Some(caused_by),
         )
         .await
     }
@@ -643,13 +727,14 @@ impl<S: EventStore> YoAgentState<S> {
         actor: ActorRef,
         call: ToolCall,
     ) -> Result<EventId, StateError> {
-        self.record_event(Event::new(
-            actor.clone(),
-            "tool.called",
-            serde_json::to_value(&call)?,
-        ))
-        .await?;
-        self.apply_ops(
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "tool.called",
+                serde_json::to_value(&call)?,
+            ))
+            .await?;
+        self.apply_ops_caused_by(
             actor,
             vec![
                 StateOp::CreateNode {
@@ -671,17 +756,19 @@ impl<S: EventStore> YoAgentState<S> {
                     props: json!({}),
                 },
             ],
+            Some(caused_by),
         )
         .await
     }
 
     pub async fn record_frame(&self, actor: ActorRef, frame: Frame) -> Result<EventId, StateError> {
-        self.record_event(Event::new(
-            actor.clone(),
-            "frame.created",
-            serde_json::to_value(&frame)?,
-        ))
-        .await?;
+        let caused_by = self
+            .record_event(Event::new(
+                actor.clone(),
+                "frame.created",
+                serde_json::to_value(&frame)?,
+            ))
+            .await?;
         let frame_node_id = NodeId::new(frame.id.0);
         let mut ops = vec![StateOp::CreateNode {
             id: frame_node_id.clone(),
@@ -700,7 +787,7 @@ impl<S: EventStore> YoAgentState<S> {
                 props: json!({}),
             });
         }
-        self.apply_ops(actor, ops).await
+        self.apply_ops_caused_by(actor, ops, Some(caused_by)).await
     }
 
     pub async fn link(
