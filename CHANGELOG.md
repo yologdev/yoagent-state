@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 — 2026-07-03
+
+### Added
+
+- `YoAgentState::resume_open_run()` — recovers the open-run marker from the
+  committed log (the last `run.started` with no matching `run.finished`), so
+  auto-chaining and correlation continue across process boundaries. Needed by
+  per-invocation CLI emitters (e.g. yoyo's gasp-emit shim), where every
+  transition is a fresh process. `load` itself stays side-effect free.
+
 ## 0.4.0 — 2026-07-03
 
 Conformance follow-ups: the sink adapter now emits GASP-conformant logs, runs

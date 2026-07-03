@@ -47,6 +47,36 @@ impl<S: EventStore> YoAgentState<S> {
         self.store.clone()
     }
 
+    /// Recover the open-run marker from the committed log: the last
+    /// `run.started` with no matching `run.finished` becomes the current run,
+    /// so auto-chaining and correlation continue across process boundaries
+    /// (`load` itself never sets the marker — readers stay side-effect free).
+    /// Returns the resumed run id, or `None` when every run is closed.
+    pub async fn resume_open_run(&self) -> Result<Option<RunId>, StateError> {
+        let events = self.store.scan().await?;
+        let mut open: Option<(RunId, EventId)> = None;
+        for event in &events {
+            let run_id = event
+                .payload
+                .get("run_id")
+                .and_then(|v| v.as_str().map(RunId::from).or_else(|| {
+                    serde_json::from_value::<RunId>(v.clone()).ok()
+                }));
+            match (event.kind.as_str(), run_id) {
+                ("run.started", Some(id)) => open = Some((id, event.id.clone())),
+                ("run.finished", Some(id)) => {
+                    if open.as_ref().is_some_and(|(o, _)| *o == id) {
+                        open = None;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let resumed = open.as_ref().map(|(id, _)| id.clone());
+        *self.current_run.write().await = open;
+        Ok(resumed)
+    }
+
     /// Append one event. Events recorded without an explicit `causation_id`
     /// while a run is open (between `record_run_started` and
     /// `record_run_finished`) are chained to the run's start event, and

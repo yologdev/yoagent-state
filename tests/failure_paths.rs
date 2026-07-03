@@ -130,3 +130,39 @@ async fn failed_run_finish_keeps_the_run_open_for_retry() {
         .unwrap_err();
     assert!(err.to_string().contains("no run is open"));
 }
+
+#[tokio::test]
+async fn resume_open_run_recovers_the_marker_across_processes() {
+    let store = MemoryEventStore::new();
+    let state = YoAgentState::load(store.clone()).await.unwrap();
+    state
+        .record_run_started(actor(), RunId::new("run_x"), "task")
+        .await
+        .unwrap();
+
+    // "new process": fresh load, marker gone — resume recovers it
+    let state2 = YoAgentState::load((*state.store()).clone()).await.unwrap();
+    let resumed = state2.resume_open_run().await.unwrap();
+    assert_eq!(resumed, Some(RunId::new("run_x")));
+
+    // events in the resumed process chain + correlate to the original run
+    state2
+        .record_event(Event::new(actor(), "observation.created", json!({"id": "o1"})))
+        .await
+        .unwrap();
+    let events = state2.store().scan().await.unwrap();
+    let started = events.iter().find(|e| e.kind == "run.started").unwrap();
+    let obs = events.iter().find(|e| e.kind == "observation.created").unwrap();
+    assert_eq!(obs.causation_id.as_ref(), Some(&started.id));
+    assert_eq!(obs.correlation_id.as_deref(), Some("run_x"));
+
+    // and the resumed run can be finished
+    state2
+        .record_run_finished(actor(), RunId::new("run_x"), "done")
+        .await
+        .unwrap();
+
+    // a third process now finds nothing open
+    let state3 = YoAgentState::load((*state2.store()).clone()).await.unwrap();
+    assert_eq!(state3.resume_open_run().await.unwrap(), None);
+}
