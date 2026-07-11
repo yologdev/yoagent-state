@@ -9,10 +9,18 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-Dwarnings"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check-test:
     name: Check & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -20,12 +28,12 @@ jobs:
       - name: Format
         run: cargo fmt -- --check
       - name: Clippy
-        run: cargo clippy --all-targets
+        run: cargo clippy --locked --all-targets
       - name: Test
         run: |
           git config --global user.email "ci@yolog.dev"
           git config --global user.name "yoagent-state-ci"
-          cargo test
+          cargo test --locked
 
   # Enforce the DECLARED rust-version with a real compiler. Cargo never
   # verifies rust-version against the code — 0.4.0/0.4.1 shipped a let-chain
@@ -34,9 +42,13 @@ jobs:
   msrv:
     name: MSRV (1.85)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
       - name: Check
-        run: cargo check --all-targets
+        # --locked: uuid/getrandom sit at exactly rust-version 1.85 (zero
+        # headroom) — enforce the committed lock so a regeneration can't
+        # silently move the gate.
+        run: cargo check --locked --all-targets
