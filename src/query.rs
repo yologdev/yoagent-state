@@ -18,10 +18,12 @@ impl Lineage {
 
         for rel in incoming.iter().chain(outgoing.iter()) {
             for node_id in [&rel.from, &rel.to] {
-                if node_id != id
-                    && let Some(node) = graph.nodes.get(node_id)
-                {
-                    related.insert(node_id.clone(), node.clone());
+                // Plain nested if (not a let-chain): let-chains stabilized in
+                // Rust 1.88, above this crate's declared 1.85 MSRV.
+                if node_id != id {
+                    if let Some(node) = graph.nodes.get(node_id) {
+                        related.insert(node_id.clone(), node.clone());
+                    }
                 }
             }
         }
