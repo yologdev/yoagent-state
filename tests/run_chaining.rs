@@ -75,11 +75,7 @@ async fn events_inside_a_run_chain_to_run_started() {
         .await
         .unwrap();
     let events = state.store().scan().await.unwrap();
-    let after = events
-        .iter()
-        .filter(|e| e.kind == "goal.created")
-        .last()
-        .unwrap();
+    let after = events.iter().rfind(|e| e.kind == "goal.created").unwrap();
     assert_eq!(after.causation_id, None);
     assert_eq!(after.correlation_id, None);
 }

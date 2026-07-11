@@ -147,12 +147,19 @@ async fn resume_open_run_recovers_the_marker_across_processes() {
 
     // events in the resumed process chain + correlate to the original run
     state2
-        .record_event(Event::new(actor(), "observation.created", json!({"id": "o1"})))
+        .record_event(Event::new(
+            actor(),
+            "observation.created",
+            json!({"id": "o1"}),
+        ))
         .await
         .unwrap();
     let events = state2.store().scan().await.unwrap();
     let started = events.iter().find(|e| e.kind == "run.started").unwrap();
-    let obs = events.iter().find(|e| e.kind == "observation.created").unwrap();
+    let obs = events
+        .iter()
+        .find(|e| e.kind == "observation.created")
+        .unwrap();
     assert_eq!(obs.causation_id.as_ref(), Some(&started.id));
     assert_eq!(obs.correlation_id.as_deref(), Some("run_x"));
 
