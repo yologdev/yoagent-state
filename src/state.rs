@@ -63,10 +63,10 @@ impl<S: EventStore> YoAgentState<S> {
             });
             match (event.kind.as_str(), run_id) {
                 ("run.started", Some(id)) => open = Some((id, event.id.clone())),
-                ("run.finished", Some(id)) => {
-                    if open.as_ref().is_some_and(|(o, _)| *o == id) {
-                        open = None;
-                    }
+                // Guard fall-through hits the `_ => {}` arm — same no-op as
+                // the previous nested if.
+                ("run.finished", Some(id)) if open.as_ref().is_some_and(|(o, _)| *o == id) => {
+                    open = None;
                 }
                 _ => {}
             }
