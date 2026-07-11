@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  check-test:
+    name: Check & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt -- --check
+      - name: Clippy
+        run: cargo clippy --all-targets
+      - name: Test
+        run: |
+          git config --global user.email "ci@yolog.dev"
+          git config --global user.name "yoagent-state-ci"
+          cargo test
+
+  # Enforce the DECLARED rust-version with a real compiler. Cargo never
+  # verifies rust-version against the code — 0.4.0/0.4.1 shipped a let-chain
+  # (needs 1.88) while declaring 1.85, breaking downstream MSRV builds
+  # (yologdev/yoagent#68). This job makes that class of lie impossible.
+  msrv:
+    name: MSRV (1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+      - name: Check
+        run: cargo check --all-targets

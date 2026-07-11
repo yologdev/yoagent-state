@@ -56,12 +56,11 @@ impl<S: EventStore> YoAgentState<S> {
         let events = self.store.scan().await?;
         let mut open: Option<(RunId, EventId)> = None;
         for event in &events {
-            let run_id = event
-                .payload
-                .get("run_id")
-                .and_then(|v| v.as_str().map(RunId::from).or_else(|| {
-                    serde_json::from_value::<RunId>(v.clone()).ok()
-                }));
+            let run_id = event.payload.get("run_id").and_then(|v| {
+                v.as_str()
+                    .map(RunId::from)
+                    .or_else(|| serde_json::from_value::<RunId>(v.clone()).ok())
+            });
             match (event.kind.as_str(), run_id) {
                 ("run.started", Some(id)) => open = Some((id, event.id.clone())),
                 ("run.finished", Some(id)) => {
