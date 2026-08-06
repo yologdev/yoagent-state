@@ -1,7 +1,7 @@
 //! The sink adapter must emit GASP-conformant logs: paired ops, valid causal
 //! roots, failures with ids, closed runs, and run-scoped correlation.
 
-use serde_json::json;
+use serde_json::{Value as JsonValue, json};
 use yoagent_state::{
     ActorRef, EventStore, MemoryEventStore, NodeId, RunId, YoAgentModelCalled,
     YoAgentModelFinished, YoAgentRunFinished, YoAgentRunStarted, YoAgentState, YoAgentStateAdapter,
@@ -35,6 +35,7 @@ async fn adapter_emits_conformant_log() {
             run_id: run.clone(),
             model: "claude-opus-4-6".into(),
             output_summary: "o".into(),
+            metadata: serde_json::json!({}),
         })
         .await
         .unwrap();
@@ -43,6 +44,7 @@ async fn adapter_emits_conformant_log() {
             run_id: run.clone(),
             tool: "cargo test".into(),
             input_summary: "i".into(),
+            metadata: serde_json::json!({}),
         })
         .await
         .unwrap();
@@ -61,6 +63,7 @@ async fn adapter_emits_conformant_log() {
             run_id: run.clone(),
             tool: "cargo build".into(),
             input_summary: "i".into(),
+            metadata: serde_json::json!({}),
         })
         .await
         .unwrap();
@@ -171,4 +174,81 @@ async fn adapter_emits_conformant_log() {
         .incoming(NodeId::new("run_a"), Some("produced_by"))
         .await;
     assert_eq!(produced.len(), 3, "model_call + 2 tool_call nodes");
+}
+
+#[tokio::test]
+async fn tool_metadata_persists_and_model_finished_carries_it_raw() {
+    let state = YoAgentState::load(MemoryEventStore::new()).await.unwrap();
+    let adapter = YoAgentStateAdapter::new(state.clone(), ActorRef::agent("yoyo"));
+    let run = RunId::new("run_meta");
+
+    adapter
+        .on_run_started(YoAgentRunStarted {
+            run_id: run.clone(),
+            task: "task".into(),
+            metadata: json!({}),
+        })
+        .await
+        .unwrap();
+
+    // Tool metadata (e.g. an argument fingerprint) must land on the folded
+    // ToolCall node — input_summary is truncated for humans and cannot be
+    // used to match calls.
+    adapter
+        .on_tool_called(YoAgentToolCalled {
+            run_id: run.clone(),
+            tool: "read_file".into(),
+            input_summary: "src/main.rs".into(),
+            metadata: json!({"args_fingerprint": "read_file:abc123"}),
+        })
+        .await
+        .unwrap();
+
+    // model.finished metadata (e.g. token usage) must survive in the raw
+    // event payload — it is what makes offline cost analysis and compaction
+    // inference possible.
+    adapter
+        .on_model_finished(YoAgentModelFinished {
+            run_id: run.clone(),
+            model: "m".into(),
+            output_summary: "o".into(),
+            metadata: json!({"usage": {"input": 1500, "output": 200, "cache_read": 1200, "cache_write": 0}}),
+        })
+        .await
+        .unwrap();
+
+    adapter
+        .on_run_finished(YoAgentRunFinished {
+            run_id: run.clone(),
+            outcome: "succeeded".into(),
+            metadata: json!({}),
+        })
+        .await
+        .unwrap();
+
+    let graph = state.graph().await;
+    let tool_node = graph
+        .nodes
+        .values()
+        .find(|n| n.props["tool"] == "read_file")
+        .expect("tool call folded");
+    assert_eq!(
+        tool_node.props["metadata"]["args_fingerprint"], "read_file:abc123",
+        "fingerprint must persist onto the ToolCall node"
+    );
+
+    let events = state.store().scan().await.unwrap();
+    let finished = events
+        .iter()
+        .find(|e| e.kind == "model.finished")
+        .expect("raw model.finished event");
+    assert_eq!(finished.payload["metadata"]["usage"]["input"], 1500);
+    assert_eq!(finished.payload["metadata"]["usage"]["cache_read"], 1200);
+
+    // Deserializing a pre-0.5 event (no metadata key) must still work.
+    let old: YoAgentToolCalled = serde_json::from_value(json!({
+        "run_id": "run_x", "tool": "bash", "input_summary": "ls"
+    }))
+    .unwrap();
+    assert_eq!(old.metadata, JsonValue::Null);
 }

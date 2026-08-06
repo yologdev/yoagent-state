@@ -49,6 +49,15 @@ pub struct YoAgentModelFinished {
     pub run_id: RunId,
     pub model: String,
     pub output_summary: String,
+    /// Free-form metadata recorded into the raw `model.finished` event.
+    ///
+    /// The canonical use is token accounting — e.g.
+    /// `{"usage": {"input": .., "output": .., "cache_read": .., "cache_write": ..}}`
+    /// — which makes the log sufficient for offline cost analysis, and makes
+    /// compaction *inferable* (a sharp drop in input tokens between
+    /// consecutive model calls in one run is the compaction signature).
+    #[serde(default)]
+    pub metadata: JsonValue,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +65,15 @@ pub struct YoAgentToolCalled {
     pub run_id: RunId,
     pub tool: String,
     pub input_summary: String,
+    /// Free-form metadata persisted onto the folded `ToolCall` node.
+    ///
+    /// The canonical use is a stable argument fingerprint — e.g.
+    /// `{"args_fingerprint": "read_file:1f2e.."}` — so calls can be *matched*
+    /// later (`input_summary` is truncated to a human-readable summary and
+    /// cannot be). Defaults to `{}` for wire compatibility with events
+    /// recorded before this field existed.
+    #[serde(default)]
+    pub metadata: JsonValue,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,7 +166,7 @@ impl<S: EventStore> YoAgentStateSink for YoAgentStateAdapter<S> {
                     input_summary: event.input_summary,
                     output_summary: None,
                     success: None,
-                    metadata: json!({}),
+                    metadata: event.metadata,
                 },
             )
             .await
