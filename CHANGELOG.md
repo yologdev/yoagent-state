@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.0 — 2026-08-06
+
+Measurement fidelity for the sink adapter: the log becomes sufficient for
+offline cost analysis, compaction inference, and call matching
+(yologdev/yoagent#104).
+
+### Changed (breaking)
+
+- **`YoAgentToolCalled` and `YoAgentModelFinished` gained a `metadata:
+  JsonValue` field.** Struct-literal constructors must add it (`json!({})` to
+  keep the old behaviour). Both deserialize with `#[serde(default)]`, so
+  events recorded by earlier versions still parse.
+  - `YoAgentToolCalled.metadata` is persisted onto the folded `ToolCall`
+    node's props (previously hardcoded `{}`). Canonical use: a stable
+    argument fingerprint (`{"args_fingerprint": ..}`) so calls can be
+    matched — `input_summary` is a truncated human summary and cannot be.
+  - `YoAgentModelFinished.metadata` rides in the raw `model.finished` event.
+    Canonical use: token usage (`{"usage": {"input", "output", "cache_read",
+    "cache_write"}}`), which makes cost computable from the log and makes
+    compactions inferable (a sharp input-token drop between consecutive
+    model calls in one run).
+
+
 ## 0.4.1 — 2026-07-03
 
 ### Added

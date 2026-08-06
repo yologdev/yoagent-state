@@ -27,12 +27,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_id: run_id.clone(),
         model: "example-model".to_string(),
         output_summary: "Retry state appears scoped too narrowly".to_string(),
+        metadata: serde_json::json!({}),
     })
     .await?;
     sink.on_tool_called(YoAgentToolCalled {
         run_id: run_id.clone(),
         tool: "cargo test".to_string(),
         input_summary: "tool_retry_survives_timeout".to_string(),
+        metadata: serde_json::json!({}),
     })
     .await?;
     sink.on_tool_finished(YoAgentToolFinished {
