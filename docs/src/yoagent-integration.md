@@ -31,6 +31,26 @@ The adapter records:
 - tool called and finished
 - failure observed when a tool finishes unsuccessfully
 
+## Measurement metadata (0.5+)
+
+`YoAgentToolCalled` and `YoAgentModelFinished` carry a free-form
+`metadata: JsonValue`, with two canonical uses:
+
+- **`tool.called` → `{"args_fingerprint": ..}`** — a stable identity for the
+  call, persisted onto the folded `ToolCall` node. `input_summary` is a
+  truncated human summary and cannot be used to match calls; the fingerprint
+  can, which is what enables re-fetch ("redo") analysis across a log.
+- **`model.finished` → `{"usage": {"input", "output", "cache_read",
+  "cache_write"}}`** — token accounting in the raw event. This makes real
+  cost computable from the log alone, and makes context compaction
+  *inferable*: a sharp drop in input tokens between consecutive model calls
+  in one run is the compaction signature, so no dedicated event kind is
+  needed.
+
+Events recorded before 0.5 deserialize unchanged (`#[serde(default)]`); old
+readers ignore the extra key. yoagent's `gasp` feature fills both fields
+automatically from 0.16.
+
 Minimal setup:
 
 ```rust
