@@ -62,11 +62,17 @@ pub type GraphSnapshot = Graph;
 /// log is malformed but readable — surface it rather than dropping it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkippedOp {
-    /// Position within the op batch this op came from, so a repair tool can
-    /// locate the event rather than searching for the node id, which may
-    /// appear many times in a long log.
+    /// Position within the op batch this op came from.
+    ///
+    /// **This does not identify the event.** One `state.ops_applied` event
+    /// carries many ops, and the event's identity is not recorded here — five
+    /// skips from five different events all report the same index. The node id
+    /// below is the more selective locator today. Carrying an `EventId` is
+    /// tracked for 0.6.0, where the struct can gain a field.
     pub index: usize,
-    /// The op variant, e.g. `"UpdateNode"`.
+    /// The op variant, e.g. `"UpdateNode"`. A string rather than an enum is a
+    /// known wart — it forecloses `Deserialize` on this type and gives callers
+    /// no exhaustiveness. Tracked for 0.6.0.
     pub op: &'static str,
     /// The node the op referenced, when it named one.
     pub node: Option<NodeId>,
@@ -86,14 +92,25 @@ fn op_kind(op: &StateOp) -> &'static str {
     }
 }
 
-/// The node an op names, for ops that name one.
+/// The pre-existing node this op requires.
+///
+/// Not "the node an op names": `CreateNode` names one and creates it, so it can
+/// never dangle, and the relation ops name two and are infallible.
+///
+/// Matched exhaustively on purpose. A `_` arm would let a future `StateOp` that
+/// requires an existing node compile clean and report `node: None` in every
+/// diagnostic — losing the operator's only handle. That is the exact rot that
+/// made the original bug report name two ops when four were affected: the set
+/// was read, not enumerated.
 fn missing_node(op: &StateOp) -> Option<NodeId> {
     match op {
         StateOp::UpdateNode { id, .. }
         | StateOp::TombstoneNode { id, .. }
         | StateOp::MarkStale { id, .. }
         | StateOp::AttachArtifact { id, .. } => Some(id.clone()),
-        _ => None,
+        StateOp::CreateNode { .. }
+        | StateOp::CreateRelation { .. }
+        | StateOp::DeleteRelation { .. } => None,
     }
 }
 
@@ -131,6 +148,8 @@ impl Graph {
     ///
     /// Use [`apply_ops`](Self::apply_ops) when validating rather than reading —
     /// a validator *should* reject a malformed log.
+    #[must_use = "the skipped ops are the only signal that the log is malformed; \
+                  dropping them is what turns a recoverable store into a quiet one"]
     pub fn apply_ops_lenient(&mut self, ops: &[StateOp]) -> Vec<SkippedOp> {
         let mut skipped = Vec::new();
         for (index, op) in ops.iter().enumerate() {
@@ -141,10 +160,32 @@ impl Graph {
                     node: missing_node(op),
                     reason: err.to_string(),
                 });
+                // Do NOT advance on a skip.
+                //
+                // `version` must match what a *live* runtime holds, because
+                // that is what seals snapshots, and gasp check 2 compares a
+                // snapshot to a fold of its log prefix by whole-`Graph`
+                // equality — `version` included. Strict `apply_ops` increments
+                // only after `apply_op` succeeds, so a writer that hits a
+                // dangling op does not count it. Measured on the production
+                // shape (one event, one dangling `UpdateNode`):
+                //
+                //     live.version   = 0   (strict, aborted before increment)
+                //     replay.version = 1   (lenient, had it counted the skip)
+                //
+                // Counting the skip made every reader disagree with the writer
+                // and would fail snapshot verification the day a snapshot
+                // emitter ships — reporting non-conformance for a store every
+                // runtime can restore, which is the inversion this whole change
+                // exists to prevent.
+                //
+                // This aligns the single-op batch, which is the shape seen in
+                // the wild. A multi-op batch still diverges, because strict
+                // abandons the ops *after* the failure while lenient applies
+                // them; closing that needs the write path to stop appending
+                // before it folds.
+                continue;
             }
-            // The version advances either way: it counts ops seen, not ops
-            // that changed something, and two readers of the same log must
-            // agree on it.
             self.version += 1;
         }
         skipped
