@@ -24,6 +24,15 @@ pub mod schema;
 pub mod state;
 pub mod store;
 
+/// This crate's version, baked in at *its* compile time.
+///
+/// Reports what a consumer actually **linked**, not what a lockfile resolved —
+/// stronger than either, and it needs no build script. Added because the GASP
+/// conformance checker must state which fold produced a verdict: it certifies
+/// a store by folding it, so a verdict is only meaningful against a named fold
+/// version, and 0.4 and 0.5 fold differently.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub use adapter::*;
 pub use artifact::*;
 pub use behavior::*;

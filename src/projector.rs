@@ -27,7 +27,9 @@ pub fn project_event_lenient(
     Ok(Vec::new())
 }
 
-/// Fold events into a graph, surviving ops that reference missing nodes.
+/// Fold events into a graph, surviving ops that reference missing nodes — and
+/// **discarding the report of what was skipped**. Prefer
+/// [`replay_with_diagnostics`].
 ///
 /// # This is a reader, not a validator
 ///
@@ -52,6 +54,7 @@ pub fn replay(events: &[Event]) -> Result<Graph, StateError> {
 ///
 /// A non-empty second element means the log is malformed but readable. Report
 /// it; do not drop it.
+#[must_use = "a non-empty skip list means the log is malformed; report it"]
 pub fn replay_with_diagnostics(events: &[Event]) -> Result<(Graph, Vec<SkippedOp>), StateError> {
     let mut graph = Graph::default();
     let mut skipped = Vec::new();

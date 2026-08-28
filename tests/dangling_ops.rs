@@ -180,3 +180,42 @@ fn a_healthy_log_folds_identically_under_both_paths() {
         "props must not diverge"
     );
 }
+
+/// A skip must be observable through the **front door**.
+///
+/// 0.5.1 made the fold survivable and advertised "not silent" — but
+/// `YoAgentState::load` and `fork_events_at` both call `replay`, which
+/// discards the report. So the one system whose store was bricked survived the
+/// brick and was told nothing: green while incomplete, which is the property
+/// that made the original incident damaging.
+///
+/// The API existing is not the same as the API being reachable. This pins the
+/// reachable path, not the one nobody calls.
+#[tokio::test]
+async fn a_skip_is_observable_through_load() {
+    use yoagent_state::{EventStore, MemoryEventStore, YoAgentState};
+
+    let store = MemoryEventStore::new();
+    store
+        .append(log_with_a_dangling_update())
+        .await
+        .expect("append");
+
+    let (state, skipped) = YoAgentState::load_with_diagnostics(store)
+        .await
+        .expect("a dangling op must not fail the load");
+
+    assert_eq!(
+        skipped.len(),
+        1,
+        "load must report the skip, not just survive it: {skipped:?}"
+    );
+    assert_eq!(skipped[0].op, "UpdateNode");
+
+    // And the store is genuinely usable, not merely openable.
+    let graph = state.graph().await;
+    assert!(
+        graph.nodes.contains_key(&NodeId::from("task_after")),
+        "events after the dangling op must be present in the loaded graph"
+    );
+}

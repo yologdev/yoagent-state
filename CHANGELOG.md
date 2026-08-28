@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.5.2 — 2026-08-28
+
+### Fixed
+
+- **0.5.1's "not silent" promise was unreachable through the front door.**
+  `YoAgentState::load` and `fork_events_at` both call `replay`, which discards
+  the skip report — so the one system whose store had been bricked survived the
+  brick and was told nothing. Green while incomplete is the property that made
+  the original incident damaging, and 0.5.1 preserved it one layer quieter.
+
+  `YoAgentState::load_with_diagnostics` returns them. `load` keeps its
+  signature and now documents plainly that it drops them.
+
+- **`missing_node` matched non-exhaustively**, so a future `StateOp` needing an
+  existing node would compile clean and report `node: None` in every
+  diagnostic — losing the operator's only handle. That is the same rot that
+  made the original report name two ops when four were affected. Now exhaustive.
+
+- **`SkippedOp::index` does not identify the event, and its doc claimed it
+  did.** One `state.ops_applied` event carries many ops and the event identity
+  is not recorded, so five skips from five events all report the same index.
+  The node id is the more selective locator today; carrying an `EventId` needs
+  a new field, which needs 0.6.0.
+
+- **The `version` comment gave the wrong reason.** "Counts ops seen" is true of
+  the lenient path only; strict counts ops *applied*. The conclusion held —
+  two successful folds of one log cannot disagree — but the real divergence is
+  writer-vs-reader, now documented.
+
+### Added
+
+- `VERSION` — this crate's version, baked in at its own compile time. Reports
+  what a consumer **linked** rather than what a lockfile resolved, so a tool
+  that must state which fold produced a verdict needs no build script.
+- `#[must_use]` on `apply_ops_lenient` and `replay_with_diagnostics`. Dropping
+  the diagnostics was not even a warning, which is how both internal call sites
+  did it.
+
+### Known
+
+- The **write path is unchanged**: `record_event` appends before folding
+  strictly, and `apply_ops` is not atomic. A writer that swallows the error
+  keeps a live graph no later replay reproduces — same bytes, different graph,
+  silently. 0.5.1 made the read survivable; it did not stop the divergence
+  being created. Tracked separately.
+- `CreateNode` on an existing id silently overwrites, and relation ops accept
+  dangling endpoints without a diagnostic. `SkippedOp` reports ops that did
+  *nothing*; it cannot report an op that did the *wrong thing*.
+
 ## 0.5.1 — 2026-08-28
 
 ### Fixed
@@ -21,8 +70,9 @@
   `replay` now skips such ops and continues. **The fix is also the repair:** an
   already-broken store becomes readable on upgrade, with no history rewrite.
 
-  Four ops were affected, not the two first reported — `UpdateNode`,
-  `TombstoneNode`, `MarkStale` and `AttachArtifact` all abort identically.
+  The issue named `UpdateNode` and `TombstoneNode` — and `CreateRelation`, which
+  in fact never aborts. Four ops do: `UpdateNode`, `TombstoneNode`,
+  `MarkStale` and `AttachArtifact`.
   `AttachArtifact` is the likeliest in practice, since artifacts are attached
   opportunistically by whichever process happens to hold one.
 

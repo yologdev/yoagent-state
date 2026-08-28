@@ -2,8 +2,8 @@ use crate::{
     ActorRef, ArtifactRef, Decision, DecisionStatus, EvalResult, Event, EventId, EventStore,
     ForkId, ForkSnapshot, Frame, Goal, GoalId, GoalStatus, Graph, GraphDiff, GraphSnapshot,
     Hypothesis, Lineage, ModelCall, NodeId, Observation, PatchId, PatchStatus, ProjectSnapshot,
-    RunId, StateError, StateOp, StatePatch, Task, TaskId, TaskStatus, ToolCall, diff_graphs,
-    fork_events_at, project_event, replay,
+    RunId, SkippedOp, StateError, StateOp, StatePatch, Task, TaskId, TaskStatus, ToolCall,
+    diff_graphs, fork_events_at, project_event, replay_with_diagnostics,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -33,14 +33,40 @@ impl<S: EventStore> Clone for YoAgentState<S> {
 }
 
 impl<S: EventStore> YoAgentState<S> {
+    /// Fold the store into a graph.
+    ///
+    /// **Lenient**: an op naming a node that does not exist is skipped rather
+    /// than failing the load, because on an append-only log a hard failure is
+    /// unrecoverable. See [`replay`].
+    ///
+    /// This **discards** the report of what was skipped. Use
+    /// [`load_with_diagnostics`](Self::load_with_diagnostics) to be told — a
+    /// skip means the log says something the graph cannot represent, and a
+    /// store that loads quietly with pieces missing is the failure mode the
+    /// leniency must not become.
     pub async fn load(store: S) -> Result<Self, StateError> {
+        Self::load_with_diagnostics(store).await.map(|(s, _)| s)
+    }
+
+    /// [`load`](Self::load), plus every op that was skipped.
+    ///
+    /// A non-empty second element means the log is malformed but readable.
+    /// Report it; do not drop it. `yoagent`'s GASP bridge warns on it.
+    ///
+    /// Added in 0.5.2: 0.5.1 made the fold survivable but gave callers no way
+    /// to observe a skip through the front door, so the "not silent" property
+    /// it advertised was unreachable in the shipped configuration.
+    pub async fn load_with_diagnostics(store: S) -> Result<(Self, Vec<SkippedOp>), StateError> {
         let events = store.scan().await?;
-        let graph = replay(&events)?;
-        Ok(Self {
-            store: Arc::new(store),
-            graph: Arc::new(RwLock::new(graph)),
-            current_run: Arc::new(RwLock::new(None)),
-        })
+        let (graph, skipped) = replay_with_diagnostics(&events)?;
+        Ok((
+            Self {
+                store: Arc::new(store),
+                graph: Arc::new(RwLock::new(graph)),
+                current_run: Arc::new(RwLock::new(None)),
+            },
+            skipped,
+        ))
     }
 
     pub fn store(&self) -> Arc<S> {
