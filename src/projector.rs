@@ -66,9 +66,15 @@ pub fn replay_with_diagnostics(events: &[Event]) -> Result<(Graph, Vec<SkippedOp
 
 /// Fold events, failing on the first op that references a missing node.
 ///
-/// The pre-0.5.1 behaviour of [`replay`], kept for validation. A conformance
-/// checker wants exactly this: a log that cannot be folded cleanly is one it
-/// should reject, even though a reader must still be able to open it.
+/// The pre-0.5.1 behaviour of [`replay`], for tools asserting well-formedness.
+///
+/// **Not for conformance checking.** A checker that certifies "a conformant
+/// runtime can fold and restore this store" must fold the way runtimes fold —
+/// leniently — and report the skip without failing on it. Using this there
+/// reports non-conformance for a store every runtime can open, which is a
+/// verdict no user can act on: an append-only log cannot have the op removed,
+/// and inserting a fix before it rewrites published history. The 0.5.1 notes
+/// said the opposite; that was wrong and has been corrected.
 pub fn replay_strict(events: &[Event]) -> Result<Graph, StateError> {
     let mut graph = Graph::default();
     for event in events {

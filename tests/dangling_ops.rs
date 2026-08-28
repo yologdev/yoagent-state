@@ -168,16 +168,14 @@ fn a_healthy_log_folds_identically_under_both_paths() {
     let strict = replay_strict(&events).expect("healthy log folds strictly too");
 
     assert!(skipped.is_empty(), "nothing to skip in a healthy log");
-    assert_eq!(lenient.version, strict.version, "version must not diverge");
+    // Whole-graph equality, not three hand-picked fields. `Graph` derives
+    // `PartialEq`, and the narrow version of this test let a lenient fold
+    // tombstone every node, invent a relation and blank every `kind` while
+    // staying green — it claimed "folds identically" and checked one node's
+    // props.
     assert_eq!(
-        lenient.nodes.len(),
-        strict.nodes.len(),
-        "node set must not diverge"
-    );
-    assert_eq!(
-        lenient.nodes[&NodeId::from("a")].props,
-        strict.nodes[&NodeId::from("a")].props,
-        "props must not diverge"
+        lenient, strict,
+        "the lenient reader must not change a graph that was already correct"
     );
 }
 
@@ -217,5 +215,45 @@ async fn a_skip_is_observable_through_load() {
     assert!(
         graph.nodes.contains_key(&NodeId::from("task_after")),
         "events after the dangling op must be present in the loaded graph"
+    );
+}
+
+/// A reader's `version` must match what a live writer holds.
+///
+/// This was unpinned and got it backwards. `version` is a `Graph` field, and
+/// GASP check 2 compares a snapshot to a fold of its log prefix by whole-graph
+/// equality — so if a reader counts an op the writer did not, every snapshot
+/// fails to verify, reporting non-conformance for a store every runtime can
+/// restore. That is the inversion this whole change exists to prevent.
+///
+/// Strict `apply_ops` increments only *after* `apply_op` succeeds, so a writer
+/// that hits a dangling op does not count it. Measured on the production shape
+/// before the fix: live 0, replay 1.
+#[tokio::test]
+async fn a_reader_and_a_live_writer_agree_on_version() {
+    use yoagent_state::{EventStore, MemoryEventStore, YoAgentState};
+
+    let store = MemoryEventStore::new();
+    let state = YoAgentState::load(store.clone()).await.unwrap();
+
+    // The real write path: append, then fold strictly. The error is swallowed
+    // exactly as the production harness swallowed it.
+    let _ = state
+        .record_event(ops_event(vec![StateOp::UpdateNode {
+            id: NodeId::from("ghost"),
+            props: json!({"a": 1}),
+        }]))
+        .await;
+
+    let live = state.graph().await;
+    let events = store.scan().await.unwrap();
+    let (replayed, skipped) = replay_with_diagnostics(&events).expect("readable");
+
+    assert_eq!(skipped.len(), 1, "the fixture must actually skip something");
+    assert_eq!(
+        replayed.version, live.version,
+        "a reader that counts the skipped op disagrees with the writer that \
+         sealed the snapshot — live={}, replay={}",
+        live.version, replayed.version
     );
 }

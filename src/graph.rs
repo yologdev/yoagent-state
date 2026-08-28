@@ -160,15 +160,32 @@ impl Graph {
                     node: missing_node(op),
                     reason: err.to_string(),
                 });
+                // Do NOT advance on a skip.
+                //
+                // `version` must match what a *live* runtime holds, because
+                // that is what seals snapshots, and gasp check 2 compares a
+                // snapshot to a fold of its log prefix by whole-`Graph`
+                // equality — `version` included. Strict `apply_ops` increments
+                // only after `apply_op` succeeds, so a writer that hits a
+                // dangling op does not count it. Measured on the production
+                // shape (one event, one dangling `UpdateNode`):
+                //
+                //     live.version   = 0   (strict, aborted before increment)
+                //     replay.version = 1   (lenient, had it counted the skip)
+                //
+                // Counting the skip made every reader disagree with the writer
+                // and would fail snapshot verification the day a snapshot
+                // emitter ships — reporting non-conformance for a store every
+                // runtime can restore, which is the inversion this whole change
+                // exists to prevent.
+                //
+                // This aligns the single-op batch, which is the shape seen in
+                // the wild. A multi-op batch still diverges, because strict
+                // abandons the ops *after* the failure while lenient applies
+                // them; closing that needs the write path to stop appending
+                // before it folds.
+                continue;
             }
-            // Advances even for a skipped op, so this path counts ops *seen*.
-            // Strict `apply_ops` counts ops *applied* and stops at the first
-            // error — but it also returns no graph then, so no two successful
-            // folds of one log can disagree.
-            //
-            // The divergence that does exist is writer-vs-reader: `record_event`
-            // appends before folding strictly, so a writer that swallows the
-            // error keeps a live graph no later replay reproduces.
             self.version += 1;
         }
         skipped

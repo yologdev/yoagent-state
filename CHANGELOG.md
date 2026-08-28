@@ -29,6 +29,21 @@
   two successful folds of one log cannot disagree — but the real divergence is
   writer-vs-reader, now documented.
 
+- **`version` advanced on a skipped op, so every reader disagreed with the
+  writer.** `Graph.version` is compared by whole-graph equality when a snapshot
+  is checked against a fold of its log prefix, and strict `apply_ops`
+  increments only *after* an op succeeds. Measured on the production shape:
+  live `0`, replay `1`. Left alone, this would have failed snapshot
+  verification the day an emitter ships — reporting non-conformance for a store
+  every runtime can restore, the inversion this change exists to prevent.
+
+  Nothing pinned it: counting skipped ops or not counting them both left the
+  whole suite green. Now pinned by a test that drives the real write path.
+
+  This aligns the single-op batch, the shape seen in the wild. A multi-op batch
+  still diverges — strict abandons the ops after the failure while lenient
+  applies them — which needs the write-path fix noted below.
+
 ### Added
 
 - `VERSION` — this crate's version, baked in at its own compile time. Reports
@@ -82,10 +97,11 @@
   this must not become. `replay` remains available for callers that do not
   inspect diagnostics, and its docs say plainly that it drops them.
 
-  **`replay_strict` keeps the old behaviour**, for validation. The distinction
-  is the point: a validator should reject a malformed log; a reader should not
-  become permanently unable to read one. Conformance checkers want the strict
-  path.
+  **`replay_strict` keeps the old behaviour**, for tools asserting
+  well-formedness. The distinction is the point: a validator should reject a
+  malformed log; a reader should not become permanently unable to read one.
+  **Correction (0.5.2):** this originally said conformance checkers want the
+  strict path. They do not — see 0.5.2.
 
   Note this does not change what the crate accepts on *write* — it changes what
   it can survive on read. `CreateRelation` and `DeleteRelation` were already
