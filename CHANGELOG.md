@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.5.1 — 2026-08-28
+
+### Fixed
+
+- **A dangling op no longer makes an append-only log permanently unreadable**
+  ([yologdev/yoagent#168](https://github.com/yologdev/yoagent/issues/168)).
+
+  `Graph::apply_ops` aborts the whole fold on the first op referencing a node
+  that does not exist. On an append-only log that is unrecoverable: the
+  offending op cannot be removed, and nothing appended after it is ever
+  reached. One such op made a live store unreadable, so every subsequent
+  session failed to open it and the agent recorded nothing while running green.
+
+  Neither repair was legal. Appending a corrective `CreateNode` is never
+  reached, because the fold dies first. Inserting one before the bad op folds
+  correctly but rewrites published history — permanently failing the
+  append-only check, which is the property the format exists to guarantee.
+
+  `replay` now skips such ops and continues. **The fix is also the repair:** an
+  already-broken store becomes readable on upgrade, with no history rewrite.
+
+  Four ops were affected, not the two first reported — `UpdateNode`,
+  `TombstoneNode`, `MarkStale` and `AttachArtifact` all abort identically.
+  `AttachArtifact` is the likeliest in practice, since artifacts are attached
+  opportunistically by whichever process happens to hold one.
+
+  **Not silent.** `replay_with_diagnostics` returns every skipped op with the
+  batch index, the op kind, the node id and the strict error. Discarding that
+  trades an unreadable store for a quietly wrong one, which is the failure mode
+  this must not become. `replay` remains available for callers that do not
+  inspect diagnostics, and its docs say plainly that it drops them.
+
+  **`replay_strict` keeps the old behaviour**, for validation. The distinction
+  is the point: a validator should reject a malformed log; a reader should not
+  become permanently unable to read one. Conformance checkers want the strict
+  path.
+
+  Note this does not change what the crate accepts on *write* — it changes what
+  it can survive on read. `CreateRelation` and `DeleteRelation` were already
+  lenient, and silently so; the node ops were strict. This makes that split
+  coherent and, unlike the relation ops, reports what it skipped.
+
+### Added
+
+- `Graph::apply_ops_lenient`, `SkippedOp`, `projector::replay_with_diagnostics`,
+  `projector::replay_strict`, `projector::project_event_lenient`.
+
 ## 0.5.0 — 2026-08-06
 
 Measurement fidelity for the sink adapter: the log becomes sufficient for

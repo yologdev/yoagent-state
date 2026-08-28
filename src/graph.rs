@@ -54,6 +54,49 @@ pub struct Graph {
 
 pub type GraphSnapshot = Graph;
 
+/// An op that referenced something the graph does not contain, skipped rather
+/// than aborting the fold.
+///
+/// Returned by [`Graph::apply_ops_lenient`] and
+/// [`crate::projector::replay_with_diagnostics`]. A non-empty list means the
+/// log is malformed but readable — surface it rather than dropping it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkippedOp {
+    /// Position within the op batch this op came from, so a repair tool can
+    /// locate the event rather than searching for the node id, which may
+    /// appear many times in a long log.
+    pub index: usize,
+    /// The op variant, e.g. `"UpdateNode"`.
+    pub op: &'static str,
+    /// The node the op referenced, when it named one.
+    pub node: Option<NodeId>,
+    /// The error the strict path would have returned.
+    pub reason: String,
+}
+
+fn op_kind(op: &StateOp) -> &'static str {
+    match op {
+        StateOp::CreateNode { .. } => "CreateNode",
+        StateOp::UpdateNode { .. } => "UpdateNode",
+        StateOp::TombstoneNode { .. } => "TombstoneNode",
+        StateOp::CreateRelation { .. } => "CreateRelation",
+        StateOp::DeleteRelation { .. } => "DeleteRelation",
+        StateOp::MarkStale { .. } => "MarkStale",
+        StateOp::AttachArtifact { .. } => "AttachArtifact",
+    }
+}
+
+/// The node an op names, for ops that name one.
+fn missing_node(op: &StateOp) -> Option<NodeId> {
+    match op {
+        StateOp::UpdateNode { id, .. }
+        | StateOp::TombstoneNode { id, .. }
+        | StateOp::MarkStale { id, .. }
+        | StateOp::AttachArtifact { id, .. } => Some(id.clone()),
+        _ => None,
+    }
+}
+
 impl Graph {
     pub fn apply_ops(&mut self, ops: &[StateOp]) -> Result<(), StateError> {
         for op in ops {
@@ -61,6 +104,50 @@ impl Graph {
             self.version += 1;
         }
         Ok(())
+    }
+
+    /// Apply ops, skipping any that reference a node that does not exist, and
+    /// returning what was skipped.
+    ///
+    /// # Why this exists
+    ///
+    /// [`apply_ops`](Self::apply_ops) aborts the whole fold on the first
+    /// dangling reference. On an append-only log that is unrecoverable: the
+    /// offending op cannot be removed, and no op appended afterwards is ever
+    /// reached, so the store becomes permanently unreadable. Inserting a
+    /// corrective op *before* it repairs the fold but rewrites published
+    /// history, which is the one property the format exists to guarantee.
+    ///
+    /// A dangling `UpdateNode` is semantically a no-op — it modifies nothing
+    /// that exists. Refusing to read the rest of the log because of it
+    /// discards information for no gain.
+    ///
+    /// # Not silent
+    ///
+    /// Every skip is returned. Callers are expected to surface them: a skip
+    /// means the log says something the graph cannot represent, which is worth
+    /// a human's attention even though it is survivable. Discarding this
+    /// return value turns a recoverable store into a quietly wrong one.
+    ///
+    /// Use [`apply_ops`](Self::apply_ops) when validating rather than reading —
+    /// a validator *should* reject a malformed log.
+    pub fn apply_ops_lenient(&mut self, ops: &[StateOp]) -> Vec<SkippedOp> {
+        let mut skipped = Vec::new();
+        for (index, op) in ops.iter().enumerate() {
+            if let Err(err) = self.apply_op(op) {
+                skipped.push(SkippedOp {
+                    index,
+                    op: op_kind(op),
+                    node: missing_node(op),
+                    reason: err.to_string(),
+                });
+            }
+            // The version advances either way: it counts ops seen, not ops
+            // that changed something, and two readers of the same log must
+            // agree on it.
+            self.version += 1;
+        }
+        skipped
     }
 
     pub fn apply_op(&mut self, op: &StateOp) -> Result<(), StateError> {
