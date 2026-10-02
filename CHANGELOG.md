@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.3 — 2026-10-02
+
+### Added
+
+- **`init_agent_repo` now declares the identity digest it was always supposed
+  to** ([gasp#1](https://github.com/yologdev/gasp/issues/1)). The GASP restore
+  contract (step 2) verifies `identity_hash` against the identity bytes, but
+  the reference emitter wrote a manifest without one — so every repo it
+  initialized was born unverifiable, and the conformance checker had nothing
+  to hold it to. The manifest now carries the Part I digest, computed by the
+  new public `identity_hash(root)` — SHA-256 over each identity file's
+  relative path + newline + bytes, in byte-order-sorted path order — over
+  whatever `identity/` holds at init. Pairs with the gasp checker release
+  that verifies declared digests fail-closed; once this version is consumed
+  there, a missing digest graduates from warning to failure.
+
 ## 0.5.2 — 2026-08-28
 
 ### Fixed

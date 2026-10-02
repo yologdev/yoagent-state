@@ -387,8 +387,79 @@ impl EventStore for GitEventStore {
     }
 }
 
+/// The GASP identity hash (SPEC Part I, commit rule 4): SHA-256 over each
+/// identity file's relative path followed by a newline and its bytes, in
+/// byte-order-sorted path order — equivalent to
+/// `find identity -type f | LC_ALL=C sort |
+///  while read f; do printf '%s\n' "$f"; cat "$f"; done | shasum -a 256`.
+/// Falls back to a root `IDENTITY.md` when there is no `identity/` directory.
+pub fn identity_hash(root: impl AsRef<Path>) -> Result<String, StateError> {
+    use sha2::{Digest, Sha256};
+    let root = root.as_ref();
+    let mut files: Vec<String> = Vec::new();
+    let identity_dir = root.join("identity");
+    if identity_dir.is_dir() {
+        collect_identity_files(root, &identity_dir, &mut files)?;
+    } else if root.join("IDENTITY.md").is_file() {
+        files.push("IDENTITY.md".into());
+    } else {
+        return Err(StateError::Store(format!(
+            "no identity/ directory or IDENTITY.md under {}",
+            root.display()
+        )));
+    }
+    files.sort_unstable(); // String order is byte order — LC_ALL=C sort
+    let mut hasher = Sha256::new();
+    for rel in &files {
+        hasher.update(rel.as_bytes());
+        hasher.update(b"\n");
+        let bytes = std::fs::read(root.join(rel))
+            .map_err(|err| StateError::Store(format!("read {rel}: {err}")))?;
+        hasher.update(&bytes);
+    }
+    let digest = hasher.finalize();
+    let mut out = String::with_capacity(64);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{byte:02x}");
+    }
+    Ok(out)
+}
+
+fn collect_identity_files(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<String>,
+) -> Result<(), StateError> {
+    let entries = std::fs::read_dir(dir)
+        .map_err(|err| StateError::Store(format!("read {}: {err}", dir.display())))?;
+    for entry in entries {
+        let path = entry
+            .map_err(|err| StateError::Store(format!("read {}: {err}", dir.display())))?
+            .path();
+        if path.is_dir() {
+            collect_identity_files(root, &path, out)?;
+        } else {
+            let rel = path
+                .strip_prefix(root)
+                .map_err(|_| {
+                    StateError::Store(format!("{} escapes the repo root", path.display()))
+                })?
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            out.push(rel);
+        }
+    }
+    Ok(())
+}
+
 /// Convenience for examples/tests: initialize a git repo suitable as an agent
 /// repo (git init + minimal AGENT.md/identity), returning the store.
+///
+/// The manifest declares the identity digest (SPEC restore step 2 verifies
+/// it), computed by [`identity_hash`] over whatever `identity/` holds at init.
 pub fn init_agent_repo(
     root: impl AsRef<Path>,
     agent_id: &str,
@@ -423,9 +494,12 @@ pub fn init_agent_repo(
     }
     let agent_md = root.join("AGENT.md");
     if !agent_md.exists() {
+        let digest = identity_hash(root)?;
         std::fs::write(
             agent_md,
-            format!("# AGENT\n\n```yaml\nspec_version: 1\nagent_id: {agent_id}\n```\n"),
+            format!(
+                "# AGENT\n\n```yaml\nspec_version: 1\nagent_id: {agent_id}\nidentity_hash: {digest}\n```\n"
+            ),
         )?;
     }
     GitEventStore::open(root, worker_id)

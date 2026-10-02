@@ -2,7 +2,8 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 use yoagent_state::{
-    ActorRef, EventStore, GitEventStore, Goal, GoalId, NodeId, RunId, YoAgentState, init_agent_repo,
+    ActorRef, EventStore, GitEventStore, Goal, GoalId, NodeId, RunId, YoAgentState, identity_hash,
+    init_agent_repo,
 };
 
 fn git_env(dir: &Path, args: &[&str]) -> String {
@@ -268,4 +269,48 @@ async fn commit_run_ignores_unrelated_dirty_and_staged_files() {
             )
             .is_err()
     );
+}
+
+#[test]
+fn init_writes_identity_digest_that_matches_the_recipe() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let _store = init_agent_repo(root, "digest-agent", "worker-a").unwrap();
+
+    let manifest = std::fs::read_to_string(root.join("AGENT.md")).unwrap();
+    let declared = manifest
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("identity_hash: "))
+        .expect("manifest declares identity_hash");
+
+    // Independent restatement of the recipe as one concatenated stream:
+    // relative path, newline, file bytes.
+    use sha2::{Digest, Sha256};
+    let mut stream = b"identity/IDENTITY.md\n".to_vec();
+    stream.extend_from_slice(&std::fs::read(root.join("identity/IDENTITY.md")).unwrap());
+    let expected = Sha256::digest(&stream)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+
+    assert_eq!(declared, expected);
+    assert_eq!(identity_hash(root).unwrap(), expected);
+}
+
+#[test]
+fn identity_digest_sorts_paths_by_bytes_and_covers_subdirs() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("identity/sub")).unwrap();
+    std::fs::write(root.join("identity/b.md"), "bee").unwrap();
+    std::fs::write(root.join("identity/sub/a.md"), "ay").unwrap();
+
+    // "identity/b.md" < "identity/sub/a.md" in byte order ('b' < 's').
+    use sha2::{Digest, Sha256};
+    let expected = Sha256::digest(b"identity/b.md\nbeeidentity/sub/a.md\nay")
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+
+    assert_eq!(identity_hash(root).unwrap(), expected);
 }
